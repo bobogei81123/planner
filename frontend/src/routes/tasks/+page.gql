@@ -1,0 +1,8 @@
+query allTasks {
+  tasks @list(name: "CurrentTasks") {
+    id
+    title
+    status
+    point
+  }
+}

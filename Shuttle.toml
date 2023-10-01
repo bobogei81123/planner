@@ -1,0 +1,3 @@
+name = "meteor-planner-dev"
+
+assets = ["assets/*"]

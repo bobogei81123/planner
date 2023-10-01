@@ -1,0 +1,49 @@
+schema {
+  query: QueryRoot
+  mutation: MutationRoot
+}
+
+input CreateTaskInput {
+  title: String!
+}
+
+type MutationRoot {
+  createTask(input: CreateTaskInput!): Task!
+  deleteTask(id: UUID!): UUID!
+  updateTask(input: UpdateTaskInput!): Task!
+}
+
+type QueryRoot {
+  tasks: [Task!]!
+}
+
+type Task {
+  id: UUID!
+  point: Int
+  status: TaskStatus!
+  title: String!
+}
+
+enum TaskStatus {
+  ACTIVE
+  COMPLETED
+}
+
+"""
+A UUID is a unique 128-bit number, stored as 16 octets. UUIDs are parsed as
+Strings within GraphQL. UUIDs are used to assign unique identifiers to
+entities without requiring a central allocating authority.
+
+# References
+
+* [Wikipedia: Universally Unique Identifier](http://en.wikipedia.org/wiki/Universally_unique_identifier)
+* [RFC4122: A Universally Unique IDentifier (UUID) URN Namespace](http://tools.ietf.org/html/rfc4122)
+"""
+scalar UUID
+
+input UpdateTaskInput {
+  id: UUID!
+  point: Int
+  status: TaskStatus
+  title: String
+}
