@@ -1,74 +1,83 @@
 <script lang="ts">
-	import { graphql, type TaskStatus$options } from '$houdini';
 	import ClickToEdit from '$lib/components/clickToEdit.svelte';
 	import ClickToEditNumber from '$lib/components/clickToEditNumber.svelte';
 	import { AngleDownSolid, AngleUpSolid, TrashBinOutline } from 'flowbite-svelte-icons';
 	import { Button } from 'flowbite-svelte';
+	import { getContextClient, mutationStore } from '@urql/svelte';
 
-	type Task = {
-		readonly id: string;
-		readonly title: string;
-		readonly status: TaskStatus$options;
-		readonly point: number | null;
-	};
+	import { graphql } from '$src/gql';
+	import { TaskStatus, type Task } from '$src/gql/graphql';
+
 	export let task: Task;
 
-	function statusIsCompleted(status: string): boolean {
-		return status === 'COMPLETED';
-	}
+	let client = getContextClient();
 
-	function invertedStatus(status: TaskStatus$options): TaskStatus$options {
-		if (statusIsCompleted(status)) {
-			return 'ACTIVE';
+	function invertedStatus(status: TaskStatus): TaskStatus {
+		if (status === TaskStatus.Completed) {
+			return TaskStatus.Active;
 		} else {
-			return 'COMPLETED';
+			return TaskStatus.Completed;
 		}
 	}
 
-	const UPDATE_TASK_STATUS = graphql(`
-		mutation UpdateTaskStatus($id: UUID!, $status: TaskStatus!) {
-			updateTask(input: { id: $id, status: $status }) {
-				id
-				status
-			}
-		}
-	`);
-	function updateTaskStatus(id: string, status: TaskStatus$options) {
-		UPDATE_TASK_STATUS.mutate({ id, status });
+	function updateTaskStatus(status: TaskStatus) {
+		mutationStore({
+			client,
+			query: graphql(`
+				mutation UpdateTaskStatus($id: UUID!, $status: TaskStatus!) {
+					updateTask(input: { id: $id, status: $status }) {
+						id
+						status
+					}
+				}
+			`),
+			variables: { id: task.id, status }
+		});
 	}
 
-	const UPDATE_TASK_TITLE = graphql(`
-		mutation UpdateTaskTitle($id: UUID!, $title: String) {
-			updateTask(input: { id: $id, title: $title }) {
-				id
-				title
-			}
-		}
-	`);
-	function updateTaskTitle(id: string, title: string) {
-		UPDATE_TASK_TITLE.mutate({ id, title });
+	function updateTaskTitle(title: string) {
+		mutationStore({
+			client,
+			query: graphql(`
+				mutation UpdateTaskTitle($id: UUID!, $title: String) {
+					updateTask(input: { id: $id, title: $title }) {
+						id
+						title
+					}
+				}
+			`),
+			variables: { id: task.id, title }
+		});
 	}
 
-	const UPDATE_TASK_POINT = graphql(`
-		mutation UpdateTaskPoint($id: UUID!, $point: Int) {
-			updateTask(input: { id: $id, point: $point }) {
-				id
-				point
-			}
-		}
-	`);
-	function updateTaskPoint(id: string, point: number | null) {
-		UPDATE_TASK_POINT.mutate({ id, point });
+	function updateTaskPoint(point: number | null) {
+		mutationStore({
+			client,
+			query: graphql(`
+				mutation UpdateTaskPoint($id: UUID!, $point: Int) {
+					updateTask(input: { id: $id, point: $point }) {
+						id
+						point
+					}
+				}
+			`),
+			variables: { id: task.id, point }
+		});
 	}
 
-	const DELETE_TASK = graphql(`
-		mutation DeleteTask($id: UUID!) {
-			deleteTask(id: $id) @Task_delete
-		}
-	`);
 	function deleteTask() {
-    console.log('delete')
-		DELETE_TASK.mutate({ id: task.id });
+		mutationStore({
+			client,
+			query: graphql(`
+				mutation DeleteTask($id: UUID!) {
+					deleteTask(id: $id)
+				}
+			`),
+			variables: { id: task.id },
+			context: {
+				additionalTypenames: ['Task']
+			}
+		});
 	}
 
 	let expanded = false;
@@ -80,12 +89,12 @@
 			<input
 				type="checkbox"
 				class="appearance-none w-10 h-10 border rounded-full checked:bg-green-100 focus:outline-2 focus:outline-green-600 hover:bg-green-100 peer"
-				checked={statusIsCompleted(task.status)}
-				on:click|preventDefault={() => updateTaskStatus(task.id, invertedStatus(task.status))}
+				checked={task.status === TaskStatus.Completed}
+				on:click|preventDefault={() => updateTaskStatus(invertedStatus(task.status))}
 			/>
 			<div
 				class="absolute w-6 h-6 pointer-events-none"
-				class:hidden={!statusIsCompleted(task.status)}
+				class:hidden={task.status !== TaskStatus.Completed}
 			>
 				<svg class="w-full h-full" viewBox="0 0 17.837 17.837">
 					<path
@@ -97,20 +106,18 @@
 				</svg>
 			</div>
 		</div>
-		<span class="font-sans text-lg flex-grow">
+		<span class="font-sans flex-grow">
 			<ClickToEdit
 				bind:value={task.title}
-				on:changeSubmit={({ detail: newTitle }) => updateTaskTitle(task.id, newTitle)}
+				on:changeSubmit={({ detail: newTitle }) => updateTaskTitle(newTitle)}
 			/>
 		</span>
 		<div class="w-20 flex justify-center items-center">
-			<div class="h-10 w-10 rounded bg-gray-600 flex justify-center items-center">
-				<span class="text-2xl text-white">
-					<ClickToEditNumber
-						bind:value={task.point}
-						on:changeSubmit={({ detail: newPoint }) => updateTaskPoint(task.id, newPoint)}
-					/>
-				</span>
+			<div class="h-10 w-10 rounded bg-gray-600">
+				<ClickToEditNumber
+					bind:value={task.point}
+					on:changeSubmit={({ detail: newPoint }) => updateTaskPoint(newPoint)}
+				/>
 			</div>
 		</div>
 		<div class="absolute w-20 h-20 peer" style="right: -5rem;" />
@@ -130,7 +137,9 @@
 
 	{#if expanded}
 		<div class="flex items-center justify-end w-full h-20">
-			<Button color="red" class="mr-4" on:click={() => deleteTask()}><TrashBinOutline class="mr-2" />Delete</Button>
+			<Button color="red" class="mr-4" on:click={deleteTask}
+				><TrashBinOutline class="mr-2" />Delete</Button
+			>
 		</div>
 	{/if}
 </div>

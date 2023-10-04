@@ -30,10 +30,16 @@
 
 {#if editing}
 	<form on:submit|preventDefault={endEditing}>
-		<input class="w-full bg-inherit" type="text" bind:value on:blur={endEditing} use:initFocus/>
+		<input
+			class="w-full bg-inherit text-lg"
+			type="text"
+			bind:value
+			on:blur={endEditing}
+			use:initFocus
+		/>
 	</form>
 {:else}
-	<span on:click={startEditing}>
+	<span on:click={startEditing} class="px-2 text-lg">
 		{value}
 	</span>
 {/if}

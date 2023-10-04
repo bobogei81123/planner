@@ -17,8 +17,8 @@ const config = {
       assets: '../assets',
     }),
     alias: {
-      $houdini: path.resolve('.', '$houdini')
-    },
+      '$src': 'src',
+    }
   }
 };
 
