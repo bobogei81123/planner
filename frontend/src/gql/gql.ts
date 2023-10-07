@@ -17,8 +17,9 @@ const documents = {
     "\n\t\t\t\tmutation UpdateTaskTitle($id: UUID!, $title: String) {\n\t\t\t\t\tupdateTask(input: { id: $id, title: $title }) {\n\t\t\t\t\t\tid\n\t\t\t\t\t\ttitle\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t": types.UpdateTaskTitleDocument,
     "\n\t\t\t\tmutation UpdateTaskPoint($id: UUID!, $point: Int) {\n\t\t\t\t\tupdateTask(input: { id: $id, point: $point }) {\n\t\t\t\t\t\tid\n\t\t\t\t\t\tpoint\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t": types.UpdateTaskPointDocument,
     "\n\t\t\t\tmutation DeleteTask($id: UUID!) {\n\t\t\t\t\tdeleteTask(id: $id)\n\t\t\t\t}\n\t\t\t": types.DeleteTaskDocument,
+    "\n  mutation CreateTask($title: String!, $planned_for: UUID) {\n    createTask(input: { title: $title, plannedFor: $planned_for }) {\n      id\n      title\n      status\n      point\n    }\n  }\n": types.CreateTaskDocument,
+    "\n\t\t\tquery allTasksInIteration($id: UUID!) {\n\t\t\t\titeration(id: $id) {\n\t\t\t\t\tid\n\t\t\t\t\tname\n\t\t\t\t\ttasks {\n\t\t\t\t\t\tid\n\t\t\t\t\t\ttitle\n\t\t\t\t\t\tstatus\n\t\t\t\t\t\tpoint\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t": types.AllTasksInIterationDocument,
     "\n\t\t\tquery allTasks {\n\t\t\t\ttasks {\n\t\t\t\t\tid\n\t\t\t\t\ttitle\n\t\t\t\t\tstatus\n\t\t\t\t\tpoint\n\t\t\t\t}\n\t\t\t}\n\t\t": types.AllTasksDocument,
-    "\n\t\t\t\tmutation CreateTask($title: String!) {\n\t\t\t\t\tcreateTask(input: { title: $title }) {\n\t\t\t\t\t\tid\n\t\t\t\t\t\ttitle\n\t\t\t\t\t\tstatus\n\t\t\t\t\t\tpoint\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t": types.CreateTaskDocument,
 };
 
 /**
@@ -54,11 +55,15 @@ export function graphql(source: "\n\t\t\t\tmutation DeleteTask($id: UUID!) {\n\t
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n\t\t\tquery allTasks {\n\t\t\t\ttasks {\n\t\t\t\t\tid\n\t\t\t\t\ttitle\n\t\t\t\t\tstatus\n\t\t\t\t\tpoint\n\t\t\t\t}\n\t\t\t}\n\t\t"): (typeof documents)["\n\t\t\tquery allTasks {\n\t\t\t\ttasks {\n\t\t\t\t\tid\n\t\t\t\t\ttitle\n\t\t\t\t\tstatus\n\t\t\t\t\tpoint\n\t\t\t\t}\n\t\t\t}\n\t\t"];
+export function graphql(source: "\n  mutation CreateTask($title: String!, $planned_for: UUID) {\n    createTask(input: { title: $title, plannedFor: $planned_for }) {\n      id\n      title\n      status\n      point\n    }\n  }\n"): (typeof documents)["\n  mutation CreateTask($title: String!, $planned_for: UUID) {\n    createTask(input: { title: $title, plannedFor: $planned_for }) {\n      id\n      title\n      status\n      point\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n\t\t\t\tmutation CreateTask($title: String!) {\n\t\t\t\t\tcreateTask(input: { title: $title }) {\n\t\t\t\t\t\tid\n\t\t\t\t\t\ttitle\n\t\t\t\t\t\tstatus\n\t\t\t\t\t\tpoint\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t"): (typeof documents)["\n\t\t\t\tmutation CreateTask($title: String!) {\n\t\t\t\t\tcreateTask(input: { title: $title }) {\n\t\t\t\t\t\tid\n\t\t\t\t\t\ttitle\n\t\t\t\t\t\tstatus\n\t\t\t\t\t\tpoint\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t"];
+export function graphql(source: "\n\t\t\tquery allTasksInIteration($id: UUID!) {\n\t\t\t\titeration(id: $id) {\n\t\t\t\t\tid\n\t\t\t\t\tname\n\t\t\t\t\ttasks {\n\t\t\t\t\t\tid\n\t\t\t\t\t\ttitle\n\t\t\t\t\t\tstatus\n\t\t\t\t\t\tpoint\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t"): (typeof documents)["\n\t\t\tquery allTasksInIteration($id: UUID!) {\n\t\t\t\titeration(id: $id) {\n\t\t\t\t\tid\n\t\t\t\t\tname\n\t\t\t\t\ttasks {\n\t\t\t\t\t\tid\n\t\t\t\t\t\ttitle\n\t\t\t\t\t\tstatus\n\t\t\t\t\t\tpoint\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n\t\t\tquery allTasks {\n\t\t\t\ttasks {\n\t\t\t\t\tid\n\t\t\t\t\ttitle\n\t\t\t\t\tstatus\n\t\t\t\t\tpoint\n\t\t\t\t}\n\t\t\t}\n\t\t"): (typeof documents)["\n\t\t\tquery allTasks {\n\t\t\t\ttasks {\n\t\t\t\t\tid\n\t\t\t\t\ttitle\n\t\t\t\t\tstatus\n\t\t\t\t\tpoint\n\t\t\t\t}\n\t\t\t}\n\t\t"];
 
 export function graphql(source: string) {
   return (documents as any)[source] ?? {};

@@ -6,22 +6,29 @@
 	import TaskCard from '$lib/components/taskCard.svelte';
 	import { graphql } from '$src/gql';
 	import type { Task } from '$src/gql/graphql';
-	import { CREATE_TASK } from '$lib/task';
+	import { CREATE_TASK } from '$src/lib/task';
+
+	export let data: { id: string };
 
 	let client = getContextClient();
 
-	const allTasksStore = queryStore({
+	const iterationStore = queryStore({
 		client: getContextClient(),
 		query: graphql(`
-			query allTasks {
-				tasks {
+			query allTasksInIteration($id: UUID!) {
+				iteration(id: $id) {
 					id
-					title
-					status
-					point
+					name
+					tasks {
+						id
+						title
+						status
+						point
+					}
 				}
 			}
-		`)
+		`),
+		variables: { id: data.id }
 	});
 
 	let createTaskTitle = '';
@@ -29,7 +36,7 @@
 		mutationStore({
 			client,
 			query: CREATE_TASK,
-			variables: { title: createTaskTitle }
+			variables: { title: createTaskTitle, planned_for: data.id }
 		});
 	}
 
@@ -45,12 +52,12 @@
 </script>
 
 <div class="w-full min-h-screen flex justify-center bg-gray-200">
-	{#if $allTasksStore.fetching}
+	{#if $iterationStore.fetching}
 		<p>Loading...</p>
-	{:else if $allTasksStore.error}
-		<p>On no... {$allTasksStore.error.message}</p>
+	{:else if $iterationStore.error}
+		<p>On no... {$iterationStore.error.message}</p>
 	{:else}
-		{@const tasks = checkNonNull($allTasksStore.data).tasks.toSorted(sortByTaskId)}
+		{@const tasks = checkNonNull($iterationStore.data).iteration.tasks.toSorted(sortByTaskId)}
 		<div class="flex flex-col mt-5 w-1/3">
 			<div class="flex items-center h-16 bg-white mb-5">
 				<div class="relative w-16 flex justify-center items-center">
@@ -68,3 +75,7 @@
 		</div>
 	{/if}
 </div>
+
+<h1>
+	{data.id}
+</h1>

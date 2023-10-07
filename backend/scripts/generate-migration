@@ -1,0 +1,13 @@
+#!/bin/bash
+
+if [ $# -eq 0 ]; then
+    echo "Error: No arguments provided. Need at least the migration name."
+    exit 1
+fi
+
+npx @ariga/atlas migrate diff \
+  --dir "file://migrations?format=golang-migrate" \
+  --to file://schema.sql \
+  --format '{{ sql . "  " }}' \
+  --dev-url "docker://postgres/15/dev" \
+  $@

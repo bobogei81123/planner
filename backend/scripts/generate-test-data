@@ -1,0 +1,10 @@
+#!/bin/bash
+
+case $1 in
+  run|revert)
+    cargo sqlx migrate "$1" --source migrations/local-dev --ignore-missing
+    ;;
+  *)
+    echo "Usage $0 <run|revert>"
+    ;;
+esac

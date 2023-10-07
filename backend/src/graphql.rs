@@ -12,6 +12,8 @@ use uuid::Uuid;
 
 use crate::model::{self, TaskStatus};
 
+const METEOR_UUID: Uuid = uuid::uuid!("00000000-0000-4000-8001-000000000000");
+
 pub struct QueryRoot;
 
 #[derive(sqlx::FromRow, async_graphql::SimpleObject)]
@@ -20,6 +22,13 @@ pub struct Task {
     title: String,
     status: model::TaskStatus,
     point: Option<i32>,
+}
+
+#[derive(async_graphql::SimpleObject)]
+pub struct Iteration {
+    id: Uuid,
+    name: String,
+    tasks: Vec<Task>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -64,6 +73,50 @@ impl QueryRoot {
 
         Ok(tasks)
     }
+
+    async fn iterations(&self, ctx: &Context<'_>) -> Result<Vec<Uuid>, AppError> {
+        let iters = sqlx::query!(
+            r#"SELECT iterations.id FROM iterations
+               INNER JOIN users ON iterations.user_id = users.id
+               WHERE users.username = $1"#,
+            "meteor"
+        )
+        .fetch_all(ctx.data_unchecked::<PgPool>())
+        .await?
+        .into_iter()
+        .map(|row| row.id)
+        .collect();
+
+        Ok(iters)
+    }
+
+    async fn iteration(&self, ctx: &Context<'_>, id: Uuid) -> Result<Iteration, AppError> {
+        let iter = sqlx::query!(
+            r#"SELECT iterations.id, iterations.name FROM iterations
+               INNER JOIN users ON iterations.user_id = users.id
+               WHERE users.username = $1"#,
+            "meteor"
+        )
+        .fetch_optional(ctx.data_unchecked::<PgPool>())
+        .await?
+        .ok_or_else(|| AppError::ResourceNotFound(id))?;
+
+        let tasks: Vec<Task> = sqlx::query_as(
+            r#"SELECT tasks.id, tasks.title, tasks.status, tasks.point FROM tasks
+               INNER JOIN users ON tasks.user_id = users.id
+               WHERE users.username = $1 AND tasks.planned_for = $2"#,
+        )
+        .bind("meteor")
+        .bind(id)
+        .fetch_all(ctx.data_unchecked::<PgPool>())
+        .await?;
+
+        Ok(Iteration {
+            id: id,
+            name: iter.name,
+            tasks,
+        })
+    }
 }
 
 pub struct MutationRoot;
@@ -79,6 +132,7 @@ struct UpdateTaskInput {
 #[derive(async_graphql::InputObject)]
 struct CreateTaskInput {
     title: String,
+    planned_for: Option<Uuid>,
 }
 
 #[Object]
@@ -115,19 +169,19 @@ impl MutationRoot {
         ctx: &Context<'_>,
         input: CreateTaskInput,
     ) -> Result<Task, AppError> {
-        const METEOR_UUID: Uuid = uuid::uuid!("00000000-0000-0000-0001-000000000000");
 
         let db_conn = ctx.data_unchecked::<PgPool>();
 
         let id = Uuid::new_v4();
 
         let row_affected = sqlx::query(
-            r#"INSERT INTO tasks (id, user_id, title, status)
-               VALUES ($1, $2, $3, 'active')"#,
+            r#"INSERT INTO tasks (id, user_id, title, status, planned_for)
+               VALUES ($1, $2, $3, 'active', $4)"#,
         )
         .bind(id)
         .bind(METEOR_UUID)
         .bind(&input.title)
+        .bind(&input.planned_for)
         .execute(db_conn)
         .await?
         .rows_affected();
