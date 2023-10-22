@@ -2,8 +2,8 @@
 	import ClickToEdit from '$lib/components/clickToEdit.svelte';
 	import ClickToEditNumber from '$lib/components/clickToEditNumber.svelte';
 	import { AngleDownSolid, AngleUpSolid, TrashBinOutline } from 'flowbite-svelte-icons';
-	import { Button } from 'flowbite-svelte';
-	import { getContextClient, mutationStore } from '@urql/svelte';
+	import { Button, MultiSelect } from 'flowbite-svelte';
+	import { getContextClient, mutationStore, queryStore } from '@urql/svelte';
 
 	import { graphql } from '$src/gql';
 	import { TaskStatus, type Task } from '$src/gql/graphql';
@@ -34,7 +34,6 @@
 			variables: { id: task.id, status }
 		});
 	}
-
 	function updateTaskTitle(title: string) {
 		mutationStore({
 			client,
@@ -65,6 +64,24 @@
 		});
 	}
 
+	function updateTaskIterations(iterations: string[]) {
+		mutationStore({
+			client,
+			query: graphql(`
+				mutation UpdateTaskIterations($id: UUID!, $iterations: [UUID!]) {
+					updateTask(input: { id: $id, iterations: $iterations }) {
+						id
+						iterations {
+							id
+							name
+						}
+					}
+				}
+			`),
+			variables: { id: task.id, iterations }
+		});
+	}
+
 	function deleteTask() {
 		mutationStore({
 			client,
@@ -79,6 +96,33 @@
 			}
 		});
 	}
+
+	const allIterationsStore = queryStore({
+		client,
+		query: graphql(`
+			query allIterations {
+				iterations {
+					id
+					name
+				}
+			}
+		`)
+	});
+	let iterationItems = [];
+
+	$: {
+		if ($allIterationsStore.fetching || $allIterationsStore.error) {
+			iterationItems = [];
+		} else {
+			iterationItems = $allIterationsStore.data.iterations.map((iteration) => {
+				return {
+					value: iteration.id,
+					name: iteration.name
+				};
+			});
+		}
+	}
+	$: selectedIterations = task.iterations.map((iteration) => iteration.id);
 
 	let expanded = false;
 </script>
@@ -136,10 +180,20 @@
 	</div>
 
 	{#if expanded}
-		<div class="flex items-center justify-end w-full h-20">
-			<Button color="red" class="mr-4" on:click={deleteTask}
-				><TrashBinOutline class="mr-2" />Delete</Button
-			>
+		<div class="flex items-center justify-between w-full h-20 p-4 gap-x-4">
+			<div class="flex grow">
+				<MultiSelect
+					items={iterationItems}
+					bind:value={selectedIterations}
+					on:selected={({ detail: newIterations }) => updateTaskIterations(newIterations.map((iteration) => iteration.value))}
+					class="w-full"
+				/>
+			</div>
+			<div class="w-30">
+				<Button color="red" class="mr-4" on:click={deleteTask}>
+					<TrashBinOutline class="mr-2" />Delete
+				</Button>
+			</div>
 		</div>
 	{/if}
 </div>

@@ -4,10 +4,9 @@ import type { TypedDocumentNode, VariablesOf } from '@graphql-typed-document-nod
 import { getContextClient, mutationStore, queryStore, type OperationResultStore } from '@urql/svelte';
 
 
-export const CREATE_TASK:
-  TypedDocumentNode<CreateTaskMutation, CreateTaskMutationVariables> = graphql(`
-  mutation CreateTask($title: String!, $planned_for: UUID) {
-    createTask(input: { title: $title, plannedFor: $planned_for }) {
+export const CREATE_TASK = graphql(`
+  mutation CreateTask($title: String!, $iteration: UUID) {
+    createTask(input: { title: $title, iteration: $iteration }) {
       id
       title
       status

@@ -6,7 +6,7 @@ use tower_http::{
 };
 
 mod graphql;
-mod model;
+pub mod model;
 
 pub async fn build_app(pg_pool: PgPool) -> Router {
     async fn handle_404() -> (StatusCode, &'static str) {

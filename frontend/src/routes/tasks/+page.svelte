@@ -19,6 +19,10 @@
 					title
 					status
 					point
+          iterations {
+            id
+            name
+          }
 				}
 			}
 		`)
@@ -44,14 +48,13 @@
 	}
 </script>
 
-<div class="w-full min-h-screen flex justify-center bg-gray-200">
-	{#if $allTasksStore.fetching}
-		<p>Loading...</p>
-	{:else if $allTasksStore.error}
-		<p>On no... {$allTasksStore.error.message}</p>
-	{:else}
-		{@const tasks = checkNonNull($allTasksStore.data).tasks.toSorted(sortByTaskId)}
-		<div class="flex flex-col mt-5 w-1/3">
+	<div class="flex flex-col mt-5 w-1/3">
+		{#if $allTasksStore.fetching}
+			<p>Loading...</p>
+		{:else if $allTasksStore.error}
+			<p>On no... {$allTasksStore.error.message}</p>
+		{:else}
+			{@const tasks = checkNonNull($allTasksStore.data).tasks.toSorted(sortByTaskId)}
 			<div class="flex items-center h-16 bg-white mb-5">
 				<div class="relative w-16 flex justify-center items-center">
 					<PlusSolid />
@@ -65,6 +68,5 @@
 					<TaskCard {task} />
 				</div>
 			{/each}
-		</div>
-	{/if}
-</div>
+		{/if}
+	</div>
