@@ -1,7 +1,7 @@
-h1:q570B7izUUS+z7qCHSzb0g/ENsy8CBkYCjhnRdrOPxE=
+h1:aZgddJtEKxkqKvNfc9JtbFiD9vbIhjAD246xvQPavrU=
 0001_create-users.down.sql h1:EU9WrKrVBOL88xexzOIleFlbSnjZUfTa2IH8OrUTHnU=
 0001_create-users.up.sql h1:leQqBsAE1XigXO4jgeFa4lbFOGWEP4DrjG+PiTGqzPA=
 0002_create-tasks.down.sql h1:NqlpxC9XjuMsgWCXIaq9VAJ/G7Tsux+rdMDRKKCCiAg=
 0002_create-tasks.up.sql h1:1prfMjSpDJq+GpJoVDeQwo47q5VVsg5TW1YxzZ8Av14=
-0003_create-iterations.down.sql h1:6OLGGqsxlzlWgTUneyCiVso3l7ouGthF6s44xnq8Lv8=
-0003_create-iterations.up.sql h1:2WfjF5uyS4O+7sDiCWe42bVHNWKhR2XZetRQ/cJK+/s=
+20231025074322_create-iterations.down.sql h1:n82l8tTwCzxd4TdNQTIRmVYeqwKOjH6XEsJGTiThnSY=
+20231025074322_create-iterations.up.sql h1:lyxfBE1PU5y+XfRLFdUpzTq+oCppt7KgxINuu8Auh7Y=

@@ -1,46 +1,81 @@
+use std::{fmt::Display, ops::Bound, sync::Arc};
+
 use anyhow::anyhow;
 use async_graphql::{
-    http::GraphiQLSource, Context, EmptySubscription, ErrorExtensions, Object, Schema, ID,
+    dataloader::DataLoader, http::GraphiQLSource, Context, EmptySubscription, ErrorExtensions,
+    Object, Schema,
 };
-use async_graphql_axum::GraphQL;
+use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use axum::{
+    extract::State,
     response::{Html, IntoResponse},
     routing, Router,
 };
-use sqlx::{PgPool, QueryBuilder};
+use chrono::NaiveDate;
+use futures::FutureExt;
+use sqlx::{postgres::types::PgRange, PgPool, QueryBuilder};
 use uuid::Uuid;
 
-use crate::model::{self, TaskStatus};
+use crate::{auth::Claims, db::TransactionExt};
 
-const METEOR_UUID: Uuid = uuid::uuid!("00000000-0000-4000-8001-000000000000");
+use self::{
+    iteration::{get_all_iterations, Iteration, IterationId},
+    task::{get_all_tasks, Task, TaskId, TaskStatus},
+};
+
+type Result<T> = std::result::Result<T, AppError>;
 
 pub struct QueryRoot;
+pub struct MutationRoot;
 
-#[derive(sqlx::FromRow, async_graphql::SimpleObject)]
-pub struct Task {
-    id: Uuid,
-    title: String,
-    status: model::TaskStatus,
-    point: Option<i32>,
+pub struct PgLoader {
+    pool: sqlx::PgPool,
 }
 
-#[derive(async_graphql::SimpleObject)]
-pub struct Iteration {
-    id: Uuid,
-    name: String,
-    tasks: Vec<Task>,
-}
+mod iteration;
+mod loader;
+mod task;
+
+type AppSchema = async_graphql::Schema<QueryRoot, MutationRoot, EmptySubscription>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error("The resource with id = {0} is not found")]
     ResourceNotFound(Uuid),
+    #[error("The request is invalid: {0}")]
+    BadRequest(BadRequestReason),
+    #[error("User is not authorized")]
+    Unauthorized,
     #[error("Internal error: {0}")]
     Internal(#[from] anyhow::Error),
 }
 
+#[derive(Debug)]
+pub enum BadRequestReason {
+    InvalidDateRange,
+}
+
+impl Display for BadRequestReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BadRequestReason::InvalidDateRange => write!(
+                f,
+                "The date range is not valid. \
+                 Start date or end date must be given if the other is, \
+                 and the end date must be later than the start date."
+            ),
+        }
+    }
+}
+
 impl From<sqlx::Error> for AppError {
     fn from(value: sqlx::Error) -> Self {
+        AppError::Internal(value.into())
+    }
+}
+
+impl From<Arc<sqlx::Error>> for AppError {
+    fn from(value: Arc<sqlx::Error>) -> Self {
         AppError::Internal(value.into())
     }
 }
@@ -51,6 +86,8 @@ impl ErrorExtensions for AppError {
             use AppError::*;
             match self {
                 ResourceNotFound(..) => e.set("code", "NOT_FOUND"),
+                BadRequest(..) => e.set("code", "BAD_REQUEST"),
+                Unauthorized => e.set("code", "FORBIDDEN"),
                 Internal(..) => {
                     e.set("code", "INTERNAL_SERVER_ERROR");
                 }
@@ -61,65 +98,28 @@ impl ErrorExtensions for AppError {
 
 #[Object]
 impl QueryRoot {
-    async fn tasks(&self, ctx: &Context<'_>) -> Result<Vec<Task>, AppError> {
-        let tasks: Vec<Task> = sqlx::query_as(
-            r#"SELECT tasks.id, tasks.title, tasks.status, tasks.point FROM tasks
-               INNER JOIN users ON tasks.user_id = users.id
-               WHERE users.username = $1"#,
-        )
-        .bind("meteor")
-        .fetch_all(ctx.data_unchecked::<PgPool>())
-        .await?;
-
-        Ok(tasks)
+    async fn tasks(&self, ctx: &Context<'_>) -> async_graphql::Result<Vec<Task>> {
+        get_all_tasks(get_user_from_ctx(ctx)?.id, ctx)
+            .await
+            .map_err(|e| e.extend())
     }
 
-    async fn iterations(&self, ctx: &Context<'_>) -> Result<Vec<Uuid>, AppError> {
-        let iters = sqlx::query!(
-            r#"SELECT iterations.id FROM iterations
-               INNER JOIN users ON iterations.user_id = users.id
-               WHERE users.username = $1"#,
-            "meteor"
-        )
-        .fetch_all(ctx.data_unchecked::<PgPool>())
-        .await?
-        .into_iter()
-        .map(|row| row.id)
-        .collect();
-
-        Ok(iters)
+    async fn iterations(&self, ctx: &Context<'_>) -> async_graphql::Result<Vec<Iteration>> {
+        get_all_iterations(get_user_from_ctx(ctx)?.id, ctx)
+            .await
+            .map_err(|e| e.extend())
     }
 
-    async fn iteration(&self, ctx: &Context<'_>, id: Uuid) -> Result<Iteration, AppError> {
-        let iter = sqlx::query!(
-            r#"SELECT iterations.id, iterations.name FROM iterations
-               INNER JOIN users ON iterations.user_id = users.id
-               WHERE users.username = $1"#,
-            "meteor"
-        )
-        .fetch_optional(ctx.data_unchecked::<PgPool>())
-        .await?
-        .ok_or_else(|| AppError::ResourceNotFound(id))?;
+    async fn iteration(&self, ctx: &Context<'_>, id: Uuid) -> Result<Iteration> {
+        let loader = ctx.data_unchecked::<DataLoader<PgLoader>>();
+        let iteration = loader
+            .load_one(IterationId(id))
+            .await?
+            .ok_or(AppError::ResourceNotFound(id))?;
 
-        let tasks: Vec<Task> = sqlx::query_as(
-            r#"SELECT tasks.id, tasks.title, tasks.status, tasks.point FROM tasks
-               INNER JOIN users ON tasks.user_id = users.id
-               WHERE users.username = $1 AND tasks.planned_for = $2"#,
-        )
-        .bind("meteor")
-        .bind(id)
-        .fetch_all(ctx.data_unchecked::<PgPool>())
-        .await?;
-
-        Ok(Iteration {
-            id: id,
-            name: iter.name,
-            tasks,
-        })
+        Ok(iteration)
     }
 }
-
-pub struct MutationRoot;
 
 #[derive(async_graphql::InputObject)]
 struct UpdateTaskInput {
@@ -127,39 +127,66 @@ struct UpdateTaskInput {
     title: Option<String>,
     status: Option<TaskStatus>,
     point: Option<Option<i32>>,
+    iterations: Option<Vec<Uuid>>,
 }
 
 #[derive(async_graphql::InputObject)]
 struct CreateTaskInput {
     title: String,
-    planned_for: Option<Uuid>,
+    iteration: Option<Uuid>,
+}
+
+#[derive(async_graphql::InputObject)]
+struct CreateIterationInput {
+    name: Option<String>,
+    start_date: Option<NaiveDate>,
+    end_date: Option<NaiveDate>,
 }
 
 #[Object]
 impl MutationRoot {
-    async fn update_task(
-        &self,
-        ctx: &Context<'_>,
-        input: UpdateTaskInput,
-    ) -> Result<Task, AppError> {
-        let db_conn = ctx.data_unchecked::<PgPool>();
+    async fn update_task(&self, ctx: &Context<'_>, input: UpdateTaskInput) -> Result<Task> {
         let id = input.id;
+        let db_conn = ctx.data_unchecked::<PgPool>().clone();
+        let tx = db_conn.begin().await?;
 
-        if let Some(mut query_builder) = build_update_task_query(&input) {
-            let query = query_builder.build();
-            if query.execute(db_conn).await?.rows_affected() != 1 {
-                return Err(AppError::ResourceNotFound(id));
+        tx.with(|mut tx| async move {
+            if let Some(mut query_builder) = build_update_task_query(&input) {
+                println!("query = {:?}", query_builder.sql());
+                let query = query_builder.build();
+                if query.execute(&db_conn).await?.rows_affected() != 1 {
+                    return Err(AppError::ResourceNotFound(id));
+                }
             }
-        }
 
-        let task: Task = sqlx::query_as(
-            r#"SELECT id, title, status, point FROM tasks
-               WHERE id = $1"#,
-        )
-        .bind(id)
-        .fetch_optional(ctx.data_unchecked::<PgPool>())
-        .await?
-        .ok_or_else(|| AppError::ResourceNotFound(id))?;
+            if let Some(iteration) = &input.iterations {
+                sqlx::query(r#"DELETE FROM iterations_tasks WHERE task_id = $1;"#)
+                    .bind(id)
+                    .execute(tx.as_mut())
+                    .await?;
+
+                sqlx::query(
+                    r#"
+                        INSERT INTO iterations_tasks (iteration_id, task_id)
+                        SELECT iteration_id, $1
+                        FROM UNNEST($2::uuid[]) AS t(iteration_id);
+                        "#,
+                )
+                .bind(id)
+                .bind(iteration)
+                .execute(tx.as_mut())
+                .await?;
+            }
+
+            Ok(())
+        })
+        .await?;
+
+        let task = ctx
+            .data_unchecked::<DataLoader<PgLoader>>()
+            .load_one(TaskId(id))
+            .await?
+            .ok_or_else(|| AppError::ResourceNotFound(id))?;
 
         Ok(task)
     }
@@ -168,36 +195,76 @@ impl MutationRoot {
         &self,
         ctx: &Context<'_>,
         input: CreateTaskInput,
-    ) -> Result<Task, AppError> {
-
+    ) -> async_graphql::Result<Task> {
+        let user = get_user_from_ctx(ctx)?;
         let db_conn = ctx.data_unchecked::<PgPool>();
+        let task_id = Uuid::new_v4();
 
-        let id = Uuid::new_v4();
+        let tx = db_conn.begin().await?;
 
-        let row_affected = sqlx::query(
-            r#"INSERT INTO tasks (id, user_id, title, status, planned_for)
-               VALUES ($1, $2, $3, 'active', $4)"#,
-        )
-        .bind(id)
-        .bind(METEOR_UUID)
-        .bind(&input.title)
-        .bind(&input.planned_for)
-        .execute(db_conn)
-        .await?
-        .rows_affected();
-        if row_affected != 1 {
-            Err(anyhow!("Failed to insert task"))?
-        }
+        tx.with(|mut tx| {
+            async move {
+                let result = sqlx::query(
+                    r#"
+                    INSERT INTO tasks (id, user_id, title, status)
+                    VALUES ($1, $2, $3, $4);
+                    "#,
+                )
+                .bind(task_id)
+                .bind(user.id)
+                .bind(&input.title)
+                .bind(TaskStatus::Active)
+                .execute(tx.as_mut())
+                .await?;
 
-        Ok(Task {
-            id,
-            title: input.title,
-            status: TaskStatus::Active,
-            point: None,
+                if result.rows_affected() != 1 {
+                    return Err(anyhow!("Failed to insert task"))?;
+                }
+
+                let Some(iteration) = input.iteration else {
+                    return Ok(());
+                };
+
+                let result = sqlx::query(
+                    r#"
+                    INSERT INTO iterations_tasks (iteration_id, task_id)
+                    VALUES ($1, $2);
+                    "#,
+                )
+                .bind(iteration)
+                .bind(task_id)
+                .execute(tx.as_mut())
+                .await;
+
+                match result {
+                    Err(sqlx::Error::Database(db_err))
+                        if db_err
+                            .constraint()
+                            .is_some_and(|x| x == "iterations_tasks_iteration_id_fkey") =>
+                    {
+                        Err(AppError::ResourceNotFound(iteration))?
+                    }
+                    Err(err) => Err(err)?,
+                    Ok(result) if result.rows_affected() != 1 => {
+                        Err(anyhow!("Failed to insert task"))?
+                    }
+                    Ok(_) => Ok::<_, AppError>(()),
+                }
+            }
+            .boxed()
         })
+        .await?;
+
+        let task = ctx
+            .data_unchecked::<DataLoader<PgLoader>>()
+            .load_one(TaskId(task_id))
+            .await?
+            .ok_or_else(|| AppError::ResourceNotFound(task_id))?;
+
+        Ok(task)
     }
 
-    async fn delete_task(&self, ctx: &Context<'_>, id: Uuid) -> Result<Uuid, AppError> {
+    async fn delete_task(&self, ctx: &Context<'_>, id: Uuid) -> Result<Uuid> {
         let db_conn = ctx.data_unchecked::<PgPool>();
 
         let row_affected = sqlx::query("DELETE FROM tasks WHERE id = $1")
@@ -211,22 +278,90 @@ impl MutationRoot {
 
         Ok(id)
     }
+
+    async fn create_iteration(
+        &self,
+        ctx: &Context<'_>,
+        input: CreateIterationInput,
+    ) -> Result<Iteration> {
+        let date_range: Option<PgRange<NaiveDate>> = match (input.start_date, input.end_date) {
+            (None, None) => None,
+            (Some(start_date), Some(end_date)) => Some(PgRange {
+                start: Bound::Included(start_date),
+                end: Bound::Included(end_date),
+            }),
+            (Some(_), None) | (None, Some(_)) => {
+                return Err(AppError::BadRequest(BadRequestReason::InvalidDateRange))?
+            }
+        };
+        let name = input.name.unwrap_or_else(|| "New Iteration".to_string());
+
+        let id = Uuid::new_v4();
+        let db_conn = ctx.data_unchecked::<PgPool>();
+        let row_affected = sqlx::query(
+            r#"INSERT INTO iterations (id, user_id, name, date_range)
+               VALUES ($1, $2, $3, $4)"#,
+        )
+        .bind(id)
+        .bind(Uuid::new_v4())
+        .bind(&name)
+        .bind(&date_range)
+        .execute(db_conn)
+        .await?
+        .rows_affected();
+
+        if row_affected != 1 {
+            return Err(anyhow!("Failed to insert a new iteration"))?;
+        }
+
+        let iteration = ctx
+            .data_unchecked::<DataLoader<PgLoader>>()
+            .load_one(IterationId(id))
+            .await?
+            .ok_or_else(|| AppError::ResourceNotFound(id))?;
+
+        Ok(iteration)
+    }
 }
 
 async fn graphiql() -> impl IntoResponse {
     Html(GraphiQLSource::build().endpoint("/graphql").finish())
 }
 
-pub fn routes(pool: PgPool) -> Router {
-    let schema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
-        .extension(async_graphql::extensions::Logger)
-        .data(pool)
-        .finish();
+async fn graphql_handler(
+    State(AppState { pool, schema }): State<AppState>,
+    claim: Option<Claims>,
+    request: GraphQLRequest,
+) -> GraphQLResponse {
+    let mut request = request.into_inner();
+    if let Some(claim) = claim {
+        if let Ok(Some(user)) = get_user_from_claim(claim, pool).await {
+            request = request.data(user);
+        }
+    }
+    schema.execute(request).await.into()
+}
 
-    Router::new().route(
-        "/",
-        routing::get(graphiql).post_service(GraphQL::new(schema)),
-    )
+pub fn routes(pool: PgPool) -> Router {
+    let schema: AppSchema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
+        .extension(async_graphql::extensions::Logger)
+        .data(pool.clone())
+        .data(DataLoader::new(
+            PgLoader { pool: pool.clone() },
+            tokio::spawn,
+        ))
+        .finish();
+    let app_state = AppState { pool, schema };
+
+    Router::new()
+        .route("/", routing::get(graphiql).post(graphql_handler))
+        .with_state(app_state)
+}
+
+#[derive(Clone)]
+struct AppState {
+    pool: PgPool,
+    schema: AppSchema,
 }
 
 fn build_update_task_query(input: &UpdateTaskInput) -> Option<sqlx::QueryBuilder<sqlx::Postgres>> {
@@ -235,17 +370,17 @@ fn build_update_task_query(input: &UpdateTaskInput) -> Option<sqlx::QueryBuilder
     {
         let mut query_builder = query_builder.separated(", ");
         if let Some(title) = &input.title {
-            query_builder.push_unseparated("title = ").push_bind(title);
+            query_builder.push("title = ").push_bind_unseparated(title);
             has_changed = true;
         }
         if let Some(status) = input.status {
             query_builder
-                .push_unseparated("status = ")
-                .push_bind(status);
+                .push("status = ")
+                .push_bind_unseparated(status);
             has_changed = true;
         }
         if let Some(point) = input.point {
-            query_builder.push_unseparated("point = ").push_bind(point);
+            query_builder.push("point = ").push_bind_unseparated(point);
             has_changed = true;
         }
     }
@@ -255,4 +390,26 @@ fn build_update_task_query(input: &UpdateTaskInput) -> Option<sqlx::QueryBuilder
 
     query_builder.push(" WHERE id = ").push_bind(input.id);
     Some(query_builder)
+}
+
+#[derive(Debug)]
+struct User {
+    id: Uuid,
+    username: String,
+}
+
+async fn get_user_from_claim(claim: Claims, pool: PgPool) -> anyhow::Result<Option<User>> {
+    let username = claim.sub;
+
+    Ok(
+        sqlx::query_scalar!("SELECT id FROM users WHERE username = $1", username)
+            .fetch_optional(&pool)
+            .await?
+            .map(|id| User { id, username }),
+    )
+}
+
+fn get_user_from_ctx<'a>(ctx: &'a Context<'_>) -> async_graphql::Result<&'a User> {
+    ctx.data::<User>()
+        .map_err(|_| AppError::Unauthorized.extend())
 }

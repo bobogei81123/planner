@@ -15,6 +15,7 @@ const config = {
     adapter: adapter({
       pages: '../assets',
       assets: '../assets',
+      fallback: 'index.html',
     }),
     alias: {
       '$src': 'src',

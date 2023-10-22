@@ -12,7 +12,7 @@
 
 	let client = getContextClient();
 
-	const iterationStore = queryStore({
+	$: iterationStore = queryStore({
 		client: getContextClient(),
 		query: graphql(`
 			query allTasksInIteration($id: UUID!) {
@@ -24,6 +24,10 @@
 						title
 						status
 						point
+            iterations {
+              id
+              name
+            }
 					}
 				}
 			}
@@ -36,7 +40,10 @@
 		mutationStore({
 			client,
 			query: CREATE_TASK,
-			variables: { title: createTaskTitle, planned_for: data.id }
+			variables: { title: createTaskTitle, iteration: data.id },
+			context: {
+				additionalTypenames: ['Iteration']
+			}
 		});
 	}
 
@@ -51,31 +58,25 @@
 	}
 </script>
 
-<div class="w-full min-h-screen flex justify-center bg-gray-200">
+<div class="flex flex-col mt-5 w-1/3">
 	{#if $iterationStore.fetching}
 		<p>Loading...</p>
 	{:else if $iterationStore.error}
 		<p>On no... {$iterationStore.error.message}</p>
 	{:else}
 		{@const tasks = checkNonNull($iterationStore.data).iteration.tasks.toSorted(sortByTaskId)}
-		<div class="flex flex-col mt-5 w-1/3">
-			<div class="flex items-center h-16 bg-white mb-5">
-				<div class="relative w-16 flex justify-center items-center">
-					<PlusSolid />
-				</div>
-				<form class="w-full h-full mr-5" on:submit|preventDefault={createTask}>
-					<input class="w-full h-full px-3" type="text" bind:value={createTaskTitle} />
-				</form>
+		<div class="flex items-center h-16 bg-white mb-5">
+			<div class="relative w-16 flex justify-center items-center">
+				<PlusSolid />
 			</div>
-			{#each tasks as task, i (task.id)}
-				<div class="bg-white" class:border-b-2={i != tasks.length - 1}>
-					<TaskCard {task} />
-				</div>
-			{/each}
+			<form class="w-full h-full mr-5" on:submit|preventDefault={createTask}>
+				<input class="w-full h-full px-3" type="text" bind:value={createTaskTitle} />
+			</form>
 		</div>
+		{#each tasks as task, i (task.id)}
+			<div class="bg-white" class:border-b-2={i != tasks.length - 1}>
+				<TaskCard {task} />
+			</div>
+		{/each}
 	{/if}
 </div>
-
-<h1>
-	{data.id}
-</h1>
