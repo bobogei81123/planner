@@ -28,7 +28,5 @@ CREATE TABLE iterations_tasks (
   FOREIGN KEY (iteration_id) REFERENCES iterations(id) ON DELETE CASCADE,
   task_id uuid UNIQUE NOT NULL,
   FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
-  PRIMARY KEY (iteration_id, task_id),
-  user_id uuid NOT NULL,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  PRIMARY KEY (iteration_id, task_id)
 );

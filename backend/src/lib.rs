@@ -1,22 +1,22 @@
-use axum::{handler::HandlerWithoutStateExt, http::StatusCode, Extension, Router};
+use axum::{Extension, Router};
 use sqlx::PgPool;
 use tower_http::{
     services::{ServeDir, ServeFile},
     trace::TraceLayer,
 };
 
+mod auth;
 mod graphql;
-pub mod model;
+mod db;
+#[cfg(test)]
+pub mod testlib;
 
 pub async fn build_app(pg_pool: PgPool) -> Router {
-    async fn handle_404() -> (StatusCode, &'static str) {
-        (StatusCode::NOT_FOUND, "Not found")
-    }
-
     let serve_dir = ServeDir::new("assets").not_found_service(ServeFile::new("assets/index.html"));
 
     Router::new()
         .nest("/graphql", graphql::routes(pg_pool.clone()))
+        .nest("/auth", auth::routes())
         .fallback_service(serve_dir)
         .layer(TraceLayer::new_for_http())
         .layer(Extension(pg_pool))

@@ -1,0 +1,12 @@
+DOCKERFILE
+.dockerignore
+.git
+**/.gitignore
+
+/target
+
+/backend/target
+
+/frontend/build
+/frontend/node_modules
+

@@ -29,6 +29,7 @@
 		"@types/uuid": "^9.0.4",
 		"@typescript-eslint/eslint-plugin": "^6.0.0",
 		"@typescript-eslint/parser": "^6.0.0",
+		"@urql/exchange-auth": "^2.1.6",
 		"@urql/svelte": "^4.0.4",
 		"autoprefixer": "^10.4.15",
 		"eslint": "^8.28.0",

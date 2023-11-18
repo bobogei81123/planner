@@ -1,8 +1,8 @@
 <script lang="ts">
 	import {
-	Button,
-	Input,
-	Label,
+		Button,
+		Input,
+		Label,
 		Modal,
 		Sidebar,
 		SidebarDropdownItem,
@@ -12,10 +12,48 @@
 		SidebarWrapper
 	} from 'flowbite-svelte';
 	import '../app.css';
-	import { Client, cacheExchange, fetchExchange, mutationStore, queryStore, setContextClient } from '@urql/svelte';
+	import {
+		Client,
+		cacheExchange,
+		fetchExchange,
+		getContextClient,
+		mutationStore,
+		queryStore,
+		setContextClient
+	} from '@urql/svelte';
 	import { graphql } from '$src/gql';
 	import { uuidToBase64 } from '$lib';
+	import { tokenStore } from '$lib/auth';
 	import { PlusSolid } from 'flowbite-svelte-icons';
+	import { authExchange } from '@urql/exchange-auth';
+
+	$: {
+		const token = $tokenStore;
+		const _authExchange = authExchange(async (utils) => {
+			return {
+				addAuthToOperation(operation) {
+					if (token === null) {
+						return operation;
+					}
+					return utils.appendHeaders(operation, {
+						Authorization: `Bearer ${token}`
+					});
+				},
+				didAuthError(error) {
+					return error.graphQLErrors.some((e) => e.extensions?.code === 'UNAUTHENTICATED');
+				},
+				async refreshAuth() {
+					console.log('Authentication refresh');
+				}
+			};
+		});
+		const client = new Client({
+			url: '/graphql',
+			exchanges: [cacheExchange, _authExchange, fetchExchange]
+		});
+		setContextClient(client);
+		console.log('set client');
+	}
 
 	const client = new Client({
 		url: '/graphql',
@@ -24,7 +62,7 @@
 	setContextClient(client);
 
 	const allIterationsStore = queryStore({
-		client,
+		client: getContextClient(),
 		query: graphql(`
 			query allIterations {
 				iterations {
@@ -36,17 +74,13 @@
 	});
 
 	function iterationUrl(iterationId: string) {
-		return `/iteration/${uuidToBase64(iterationId)}`;
-	}
-
-	$: {
-		console.log($allIterationsStore.data);
+		return `/iteration/${iterationId}`;
 	}
 
 	let iterationModalIsActive = false;
-  let newIterationName = null;
+	let newIterationName = null;
 
-  function createIteration() {
+	function createIteration() {
 		mutationStore({
 			client,
 			query: graphql(`
@@ -59,9 +93,9 @@
 			`),
 			variables: { name: newIterationName }
 		});
-    newIterationName = null;
-    iterationModalIsActive = false;
-  }
+		newIterationName = null;
+		iterationModalIsActive = false;
+	}
 </script>
 
 <div class="w-full min-h-screen flex justify-center bg-gray-200">
@@ -89,7 +123,7 @@
 		<h3 class="mb-4 text-xl font-medium text-gray-900 dark:text-white">Create a new iteration</h3>
 		<Label class="space-y-2">
 			<span>Name</span>
-			<Input type="text" name="name" placeholder="New Iteration" bind:value={newIterationName}/>
+			<Input type="text" name="name" placeholder="New Iteration" bind:value={newIterationName} />
 		</Label>
 		<Button type="submit" class="w-full" color="red" on:click={createIteration}>Create</Button>
 	</form>

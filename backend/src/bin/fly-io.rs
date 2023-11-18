@@ -14,7 +14,7 @@ fn init_tracing() {
 }
 
 async fn connect_db() -> PgPool {
-    let postgres_conn_url = std::env::var("DATABASE_URL").expect("$DATABASE_URL is not set.");
+    let postgres_conn_url = std::env::var("DATABASE_URL").expect("$DATABASE_URL is not set");
     PgPool::connect(&postgres_conn_url)
         .await
         .expect("Cannot create PgPool")
