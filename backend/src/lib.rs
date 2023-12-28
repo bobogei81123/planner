@@ -8,8 +8,6 @@ use tower_http::{
 mod auth;
 mod graphql;
 mod db;
-#[cfg(test)]
-pub mod testlib;
 
 pub async fn build_app(pg_pool: PgPool) -> Router {
     let serve_dir = ServeDir::new("assets").not_found_service(ServeFile::new("assets/index.html"));

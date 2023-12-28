@@ -1,3 +1,6 @@
 [workspace]
-members = ["backend"]
+members = ["backend", "testlib"]
 resolver = "1"
+
+[workspace.dependencies]
+testlib = { path = "testlib" }

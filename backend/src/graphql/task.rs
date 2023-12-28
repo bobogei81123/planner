@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use async_graphql::dataloader::{DataLoader, Loader};
 use async_trait::async_trait;
-use sqlx::PgPool;
+use sqlx::{postgres::types::PgRange, PgPool};
 use uuid::Uuid;
 
 use super::{
@@ -25,7 +25,7 @@ pub struct Task {
 #[sqlx(type_name = "task_status")]
 #[sqlx(rename_all = "lowercase")]
 #[derive(async_graphql::Enum)]
-pub(crate) enum TaskStatus {
+pub enum TaskStatus {
     Active,
     Completed,
 }
@@ -136,40 +136,52 @@ pub(crate) async fn get_all_tasks(
     Ok(tasks.into_iter().map(Task::from).collect())
 }
 
+pub(crate) async fn get_planned_tasks_in_date_range(
+    user_id: Uuid,
+    date_range: (chrono::NaiveDate, chrono::NaiveDate),
+    pool: &PgPool,
+) -> Result<Vec<Task>> {
+    let tasks: Vec<PgTask> = sqlx::query_as(
+        r#"SELECT tasks.id, tasks.title, tasks.status, tasks.point,
+               array_remove(array_agg(iterations_tasks.iteration_id), NULL) AS iterations
+           FROM tasks
+           LEFT JOIN iterations_tasks ON tasks.id = iterations_tasks.task_id
+           WHERE tasks.user_id = $1
+               AND $2 @> tasks.planned_on
+           GROUP BY tasks.id; "#,
+    )
+    .bind(user_id)
+    .bind(PgRange {
+        start: std::ops::Bound::Included(date_range.0),
+        end: std::ops::Bound::Excluded(date_range.1),
+    })
+    .fetch_all(pool)
+    .await?;
+
+    Ok(tasks.into_iter().map(Task::from).collect())
+}
+
 #[cfg(test)]
 mod tests {
+    use chrono::NaiveDate;
     use googletest::prelude::*;
 
     use super::*;
-    use crate::testlib::{PgDocker, Result, test_uuid};
+    use testlib::{insert_task, test_uuid, PgDocker, Result, TestTaskBuilder};
 
-    async fn insert_task(
-        id: Uuid,
-        user_id: Uuid,
-        title: &str,
-        status: TaskStatus,
-        point: Option<i32>,
-        pool: &PgPool,
-    ) {
-        sqlx::query(
-            r#"
-            INSERT INTO tasks(id, user_id, title, status, point) VALUES ($1, $2, $3, $4, $5);
-            "#,
-        )
-        .bind(id)
-        .bind(user_id)
-        .bind(title)
-        .bind(status)
-        .bind(point)
-        .execute(pool)
-        .await
-        .unwrap_or_else(|e| {
-            panic!(
-                "Failed to insert task with id={id:#?}, user_id={user_id:#?}, \
-                title={title:#?}, status={status:#?}, point={point:#?}. \
-                This may be caused by invalid inputs: {e:?}"
-            )
-        });
+    const DEFAULT_USER_UUID: Uuid = test_uuid(1);
+
+    async fn insert_default_user(pg_docker: &PgDocker) {
+        pg_docker
+            .insert_test_user("meteor", DEFAULT_USER_UUID)
+            .await
+            .expect("failed to insert test user");
+    }
+
+    fn default_task_builder() -> TestTaskBuilder {
+        let mut builder = TestTaskBuilder::default();
+        builder.user_id(DEFAULT_USER_UUID);
+        builder
     }
 
     #[googletest::test]
@@ -178,33 +190,38 @@ mod tests {
         let pg_docker = PgDocker::new().await;
         let pool = pg_docker.pool();
         let test_user_uuid = test_uuid(1);
-        pg_docker.insert_test_user("meteor", test_user_uuid).await?;
-
+        insert_default_user(&pg_docker).await;
         insert_task(
-            test_uuid(2),
-            test_user_uuid,
-            "test #1",
-            TaskStatus::Active,
-            Some(1),
             pool,
+            default_task_builder()
+                .id(test_uuid(2))
+                .title("test #1")
+                .status(testlib::TaskStatus::Active)
+                .point(Some(1))
+                .build()
+                .unwrap(),
         )
         .await;
         insert_task(
-            test_uuid(3),
-            test_user_uuid,
-            "test #2",
-            TaskStatus::Active,
-            Some(2),
             pool,
+            default_task_builder()
+                .id(test_uuid(3))
+                .title("test #2")
+                .status(testlib::TaskStatus::Active)
+                .point(Some(2))
+                .build()
+                .unwrap(),
         )
         .await;
         insert_task(
-            test_uuid(4),
-            test_user_uuid,
-            "test #3",
-            TaskStatus::Completed,
-            None,
             pool,
+            default_task_builder()
+                .id(test_uuid(4))
+                .title("test #3")
+                .status(testlib::TaskStatus::Completed)
+                .point(None)
+                .build()
+                .unwrap(),
         )
         .await;
 
@@ -236,6 +253,70 @@ mod tests {
                         iterations: empty(),
                     })
                 ),
+            ]
+        );
+
+        Ok(())
+    }
+
+    #[googletest::test]
+    #[tokio::test]
+    async fn loader_can_load_tasks_planned_in_range() -> Result<()> {
+        let pg_docker = PgDocker::new().await;
+        let pool = pg_docker.pool();
+        insert_default_user(&pg_docker).await;
+        insert_task(
+            pool,
+            default_task_builder()
+                .id(test_uuid(2))
+                .title("test #1")
+                .planned_on(Some(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()))
+                .build()
+                .unwrap(),
+        )
+        .await;
+        insert_task(
+            pool,
+            default_task_builder()
+                .id(test_uuid(3))
+                .title("test #2")
+                .planned_on(Some(NaiveDate::from_ymd_opt(2024, 1, 7).unwrap()))
+                .build()
+                .unwrap(),
+        )
+        .await;
+        insert_task(
+            pool,
+            default_task_builder()
+                .id(test_uuid(4))
+                .title("test #3")
+                .planned_on(Some(NaiveDate::from_ymd_opt(2024, 1, 5).unwrap()))
+                .build()
+                .unwrap(),
+        )
+        .await;
+
+        let result = get_planned_tasks_in_date_range(
+            DEFAULT_USER_UUID,
+            (
+                NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+                NaiveDate::from_ymd_opt(2024, 1, 6).unwrap(),
+            ),
+            &pool,
+        )
+        .await?;
+
+        expect_that!(
+            result,
+            unordered_elements_are![
+                matches_pattern!(Task {
+                    id: eq(test_uuid(2)),
+                    title: eq("test #1"),
+                }),
+                matches_pattern!(Task {
+                    id: eq(test_uuid(4)),
+                    title: eq("test #3"),
+                }),
             ]
         );
 

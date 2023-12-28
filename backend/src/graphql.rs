@@ -128,6 +128,7 @@ struct UpdateTaskInput {
     status: Option<TaskStatus>,
     point: Option<Option<i32>>,
     iterations: Option<Vec<Uuid>>,
+    planned_on: Option<NaiveDate>,
 }
 
 #[derive(async_graphql::InputObject)]
@@ -381,6 +382,12 @@ fn build_update_task_query(input: &UpdateTaskInput) -> Option<sqlx::QueryBuilder
         }
         if let Some(point) = input.point {
             query_builder.push("point = ").push_bind_unseparated(point);
+            has_changed = true;
+        }
+        if let Some(planned_on) = &input.planned_on {
+            query_builder
+                .push("planned_on = ")
+                .push_bind_unseparated(planned_on);
             has_changed = true;
         }
     }

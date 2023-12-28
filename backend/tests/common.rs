@@ -7,8 +7,9 @@ use axum::{Router, Server};
 use http::{request, Request};
 use planner_backend::build_app;
 use reqwest::{IntoUrl, RequestBuilder};
+use sqlx::PgPool;
 
-include!("../src/testlib.rs");
+pub type Result<T> = anyhow::Result<T>;
 
 pub struct TestServer {
     addr: SocketAddr,

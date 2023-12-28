@@ -1,21 +1,18 @@
+mod common;
 mod matchers;
-mod testlib;
 
 use std::str::FromStr;
 
-use googletest::{assert_pred, prelude::*};
-use http::StatusCode;
+use common::{Result, TestServer, UserSession};
+use googletest::prelude::*;
 use planner_backend::build_app;
 use reqwest::Response;
 use serde_json::json;
 use sqlx::PgPool;
-use testlib::PgDocker;
+use testlib::{test_uuid, PgDocker};
 use uuid::Uuid;
 
-use crate::{
-    matchers::{json_number, json_string, uuid_str},
-    testlib::{test_uuid, Result, TestServer, UserSession},
-};
+use crate::matchers::{json_number, json_string, uuid_str};
 
 const TEST_USERNAME: &str = "meteor";
 const TEST_USER_UUID: Uuid = test_uuid(1);
@@ -24,9 +21,12 @@ const TEST_USER_UUID: Uuid = test_uuid(1);
 #[tokio::test]
 async fn user_can_login() -> Result<()> {
     let pg_docker = PgDocker::new().await;
-    pg_docker.insert_test_user(TEST_USERNAME, TEST_USER_UUID);
+    pg_docker
+        .insert_test_user(TEST_USERNAME, TEST_USER_UUID)
+        .await
+        .expect("cannot insert test user");
     let server = TestServer::spawn(pg_docker.pool().clone()).await;
-    let user_session = UserSession::login_as(server, TEST_USERNAME).await?;
+    let _ = UserSession::login_as(server, TEST_USERNAME).await?;
 
     Ok(())
 }
