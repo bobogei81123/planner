@@ -2,66 +2,131 @@ use std::{collections::HashMap, sync::Arc};
 
 use async_graphql::dataloader::{DataLoader, Loader};
 use async_trait::async_trait;
-use sqlx::{postgres::types::PgRange, PgPool};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, IntoActiveModel,
+    ModelTrait, QueryFilter, RuntimeErr, Set, TransactionTrait,
+};
 use uuid::Uuid;
+
+use crate::{db::TransactionExt, entities};
 
 use super::{
     iteration::{Iteration, IterationId},
-    PgLoader, Result,
+    AppError, AppResult, BadRequestReason, CreateTaskInput, DateRange, PgLoader, TaskFilter,
+    UpdateTaskInput,
 };
+
+// This is due to a bug in sea-orm proc macro that has a conflict with the `Result` we defined.
+mod hidden {
+    use sea_orm::Value;
+    use uuid::Uuid;
+
+    #[repr(transparent)]
+    #[derive(
+        Copy, Clone, Eq, PartialEq, Hash, Debug, async_graphql::NewType, sea_orm::DeriveValueType,
+    )]
+    pub(crate) struct TaskId(pub Uuid);
+}
+pub(crate) use hidden::TaskId;
 
 #[derive(Clone, Debug, async_graphql::SimpleObject)]
 #[graphql(complex)]
-pub struct Task {
+pub(super) struct Task {
     id: Uuid,
     title: String,
     status: TaskStatus,
     point: Option<i32>,
     #[graphql(skip)]
-    iterations: Vec<Uuid>,
+    iterations: Vec<IterationId>,
+    planned_on: Option<chrono::NaiveDate>,
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug, sqlx::Type)]
-#[sqlx(type_name = "task_status")]
-#[sqlx(rename_all = "lowercase")]
-#[derive(async_graphql::Enum)]
-pub enum TaskStatus {
+#[async_graphql::ComplexObject]
+impl Task {
+    async fn iterations(
+        &self,
+        ctx: &async_graphql::Context<'_>,
+    ) -> async_graphql::Result<Vec<Iteration>> {
+        let loader = ctx.data_unchecked::<DataLoader<PgLoader>>();
+        let iterations = loader.load_many(self.iterations.iter().copied()).await?;
+
+        Ok(iterations.into_values().collect())
+    }
+}
+
+impl From<entities::tasks::Model> for Task {
+    fn from(
+        entities::tasks::Model {
+            id,
+            title,
+            status,
+            point,
+            planned_on,
+            ..
+        }: entities::tasks::Model,
+    ) -> Self {
+        Self {
+            id,
+            title,
+            status: status.into(),
+            point,
+            iterations: Vec::new(),
+            planned_on,
+        }
+    }
+}
+
+impl Task {
+    fn from_model_and_iteration_ids(
+        model: entities::tasks::Model,
+        iter_ids: Vec<IterationId>,
+    ) -> Self {
+        let mut task: Task = model.into();
+        task.iterations = iter_ids;
+
+        task
+    }
+
+    fn from_task_and_relation_models(
+        model: entities::tasks::Model,
+        rel_models: Vec<entities::iterations_tasks::Model>,
+    ) -> Self {
+        Task::from_model_and_iteration_ids(
+            model,
+            rel_models
+                .into_iter()
+                .map(|rel| IterationId(rel.iteration_id))
+                .collect(),
+        )
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug, sqlx::Type, async_graphql::Enum)]
+pub(crate) enum TaskStatus {
     Active,
     Completed,
 }
 
-#[repr(transparent)]
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, sqlx::Type)]
-#[sqlx(transparent)]
-pub(crate) struct TaskId(pub Uuid);
-
-// We need this struct because we cannot use `query_as!` macro and have to use the normal
-// `query_as` function, which cannot assert the `iterations` field is not NULL.
-#[derive(sqlx::FromRow)]
-struct PgTask {
-    id: Uuid,
-    title: String,
-    status: TaskStatus,
-    point: Option<i32>,
-    iterations: Option<Vec<Uuid>>,
+impl Default for TaskStatus {
+    fn default() -> Self {
+        Self::Active
+    }
 }
 
-impl From<PgTask> for Task {
-    fn from(
-        PgTask {
-            id,
-            title,
-            status,
-            point,
-            iterations,
-        }: PgTask,
-    ) -> Self {
-        Task {
-            id,
-            title,
-            status,
-            point,
-            iterations: iterations.unwrap_or_else(Vec::new),
+impl From<entities::sea_orm_active_enums::TaskStatus> for TaskStatus {
+    fn from(value: entities::sea_orm_active_enums::TaskStatus) -> Self {
+        match value {
+            entities::sea_orm_active_enums::TaskStatus::Active => TaskStatus::Active,
+            entities::sea_orm_active_enums::TaskStatus::Completed => TaskStatus::Completed,
+        }
+    }
+}
+
+impl From<TaskStatus> for entities::sea_orm_active_enums::TaskStatus {
+    fn from(value: TaskStatus) -> Self {
+        match value {
+            TaskStatus::Active => entities::sea_orm_active_enums::TaskStatus::Active,
+            TaskStatus::Completed => entities::sea_orm_active_enums::TaskStatus::Completed,
         }
     }
 }
@@ -69,7 +134,7 @@ impl From<PgTask> for Task {
 #[async_trait]
 impl Loader<TaskId> for PgLoader {
     type Value = Task;
-    type Error = Arc<sqlx::Error>;
+    type Error = Arc<DbErr>;
 
     async fn load(
         &self,
@@ -80,85 +145,180 @@ impl Loader<TaskId> for PgLoader {
 }
 
 impl PgLoader {
-    pub(crate) async fn load_tasks(&self, keys: &[TaskId]) -> sqlx::Result<HashMap<TaskId, Task>> {
-        // We have to use `query_as` function instead of the macro because sqlx does not support
-        // custom postgres enum type in macros.
-        let tasks: Vec<PgTask> = sqlx::query_as(
-            r#"SELECT tasks.id, tasks.title, tasks.status, tasks.point,
-                   array_remove(array_agg(iterations_tasks.iteration_id), NULL) AS iterations
-               FROM tasks
-               INNER JOIN users ON tasks.user_id = users.id
-               LEFT JOIN iterations_tasks ON tasks.id = iterations_tasks.task_id
-               WHERE users.username = $1 AND tasks.id = ANY($2)
-               GROUP BY tasks.id;
-            "#,
-        )
-        .bind("meteor")
-        .bind(keys)
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(tasks
+    pub(crate) async fn load_tasks(
+        &self,
+        keys: &[TaskId],
+    ) -> std::result::Result<HashMap<TaskId, Task>, DbErr> {
+        // TODO: check user
+        Ok(entities::tasks::Entity::find()
+            .filter(entities::tasks::Column::Id.is_in(keys.iter().copied()))
+            .find_with_related(entities::iterations_tasks::Entity)
+            .all(&self.db_conn)
+            .await?
             .into_iter()
-            .map(|x| (TaskId(x.id), x.into()))
+            .map(|(model, rel)| {
+                let task = Task::from_task_and_relation_models(model, rel);
+
+                (TaskId(task.id), task)
+            })
             .collect())
     }
 }
 
-#[async_graphql::ComplexObject]
-impl Task {
-    async fn iterations(&self, ctx: &async_graphql::Context<'_>) -> Result<Vec<Iteration>> {
-        let loader = ctx.data_unchecked::<DataLoader<PgLoader>>();
-        let iterations = loader
-            .load_many(self.iterations.iter().map(|x| IterationId(*x)))
-            .await?;
-
-        Ok(iterations.into_values().collect())
+pub(super) async fn list_tasks(
+    user_id: Uuid,
+    filter: TaskFilter,
+    db_conn: &DatabaseConnection,
+) -> AppResult<Vec<Task>> {
+    let mut query =
+        entities::tasks::Entity::find().filter(entities::tasks::Column::UserId.eq(user_id));
+    if let Some(date_range) = filter.planned_date_range {
+        let DateRange { start, end } = date_range;
+        if start > end {
+            return Err(AppError::BadRequest(BadRequestReason::InvalidDateRange))?;
+        }
+        query = query.filter(entities::tasks::Column::PlannedOn.between(start, end));
     }
+
+    Ok(query
+        .find_with_related(entities::iterations_tasks::Entity)
+        .all(db_conn)
+        .await?
+        .into_iter()
+        .map(|(model, rel)| Task::from_task_and_relation_models(model, rel))
+        .collect())
 }
 
-pub(crate) async fn get_all_tasks(
+pub(super) async fn create_task(
     user_id: Uuid,
-    ctx: &async_graphql::Context<'_>,
-) -> Result<Vec<Task>> {
-    let tasks: Vec<PgTask> = sqlx::query_as(
-        r#"SELECT tasks.id, tasks.title, tasks.status, tasks.point,
-               array_remove(array_agg(iterations_tasks.iteration_id), NULL) AS iterations
-           FROM tasks
-           LEFT JOIN iterations_tasks ON tasks.id = iterations_tasks.task_id
-           WHERE tasks.user_id = $1
-           GROUP BY tasks.id; "#,
-    )
-    .bind(user_id)
-    .fetch_all(ctx.data_unchecked::<PgPool>())
-    .await?;
+    input: CreateTaskInput,
+    db_conn: &DatabaseConnection,
+) -> AppResult<Task> {
+    let task_id = Uuid::new_v4();
+    let tx = db_conn.begin().await?;
 
-    Ok(tasks.into_iter().map(Task::from).collect())
+    let task = tx
+        .with(|tx| async move {
+            let tx = tx.as_ref();
+            let task = entities::tasks::ActiveModel {
+                id: Set(task_id),
+                user_id: Set(user_id),
+                title: Set(input.title),
+                status: Set(TaskStatus::Active.into()),
+                planned_on: Set(input.planned_on),
+                ..Default::default()
+            };
+            let task = task.insert(tx).await?;
+
+            if let Some(iteration) = input.iteration {
+                let result = entities::iterations_tasks::ActiveModel {
+                    iteration_id: Set(iteration),
+                    task_id: Set(task_id),
+                }
+                .insert(tx)
+                .await;
+
+                match result {
+                    Err(DbErr::Exec(RuntimeErr::SqlxError(sqlx::Error::Database(db_err))))
+                        if db_err
+                            .constraint()
+                            .is_some_and(|x| x == "iterations_tasks_iteration_id_fkey") =>
+                    {
+                        return Err(AppError::ResourceNotFound(iteration))
+                    }
+                    Err(err) => return Err(err)?,
+                    Ok(_) => (),
+                }
+            }
+
+            let iterations = task
+                .find_related(entities::iterations_tasks::Entity)
+                .all(tx)
+                .await?;
+            Ok(Task::from_task_and_relation_models(task, iterations))
+        })
+        .await?;
+
+    Ok(task)
 }
 
-pub(crate) async fn get_planned_tasks_in_date_range(
+pub(super) async fn update_task(
     user_id: Uuid,
-    date_range: (chrono::NaiveDate, chrono::NaiveDate),
-    pool: &PgPool,
-) -> Result<Vec<Task>> {
-    let tasks: Vec<PgTask> = sqlx::query_as(
-        r#"SELECT tasks.id, tasks.title, tasks.status, tasks.point,
-               array_remove(array_agg(iterations_tasks.iteration_id), NULL) AS iterations
-           FROM tasks
-           LEFT JOIN iterations_tasks ON tasks.id = iterations_tasks.task_id
-           WHERE tasks.user_id = $1
-               AND $2 @> tasks.planned_on
-           GROUP BY tasks.id; "#,
-    )
-    .bind(user_id)
-    .bind(PgRange {
-        start: std::ops::Bound::Included(date_range.0),
-        end: std::ops::Bound::Excluded(date_range.1),
-    })
-    .fetch_all(pool)
-    .await?;
+    input: UpdateTaskInput,
+    db_conn: &DatabaseConnection,
+) -> AppResult<Task> {
+    let id = input.id;
+    let tx = db_conn.begin().await?;
 
-    Ok(tasks.into_iter().map(Task::from).collect())
+    let task = tx
+        .with(|tx| async move {
+            let tx = tx.as_ref();
+
+            let mut task = entities::tasks::Entity::find_by_id(id)
+                .filter(entities::tasks::Column::UserId.eq(user_id))
+                .one(tx)
+                .await?
+                .ok_or_else(|| AppError::ResourceNotFound(id))?
+                .into_active_model();
+            if let Some(title) = input.title {
+                task.title = Set(title);
+            }
+            if let Some(status) = input.status {
+                task.status = Set(status.into());
+            }
+            if let Some(point) = input.point {
+                task.point = Set(point);
+            }
+            if let Some(planned_on) = input.planned_on {
+                task.planned_on = Set(planned_on);
+            }
+            let task = task.update(db_conn).await?;
+
+            if let Some(iteration) = input.iterations {
+                entities::iterations_tasks::Entity::delete_many()
+                    .filter(entities::iterations_tasks::Column::TaskId.eq(id))
+                    .exec(tx)
+                    .await?;
+
+                entities::iterations_tasks::Entity::insert_many(
+                    iteration
+                        .into_iter()
+                        .map(|iter_id| entities::iterations_tasks::ActiveModel {
+                            iteration_id: Set(iter_id),
+                            task_id: Set(id),
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .exec(tx)
+                .await?;
+            }
+
+            let iterations = task
+                .find_related(entities::iterations_tasks::Entity)
+                .all(tx)
+                .await?;
+            Ok::<_, AppError>(Task::from_task_and_relation_models(task, iterations))
+        })
+        .await?;
+
+    Ok(task)
+}
+
+pub(super) async fn delete_task(
+    user_id: Uuid,
+    task_id: TaskId,
+    db_conn: &DatabaseConnection,
+) -> AppResult<()> {
+    let entities = entities::tasks::Entity::delete_by_id(task_id)
+        .filter(entities::tasks::Column::UserId.eq(user_id))
+        .exec(db_conn)
+        .await?;
+
+    if entities.rows_affected != 1 {
+        return Err(AppError::ResourceNotFound(task_id.0));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -167,76 +327,87 @@ mod tests {
     use googletest::prelude::*;
 
     use super::*;
-    use testlib::{insert_task, test_uuid, PgDocker, Result, TestTaskBuilder};
+    use testlib::{test_uuid, PgDocker, Result};
 
-    const DEFAULT_USER_UUID: Uuid = test_uuid(1);
+    const DEFAULT_USER_UUID: Uuid = test_uuid(314159);
+    const NOT_DEFAULT_USER_UUID: Uuid = test_uuid(141421);
 
-    async fn insert_default_user(pg_docker: &PgDocker) {
-        pg_docker
-            .insert_test_user("meteor", DEFAULT_USER_UUID)
-            .await
-            .expect("failed to insert test user");
+    async fn insert_default_user(db_conn: &DatabaseConnection) {
+        entities::users::ActiveModel {
+            id: Set(DEFAULT_USER_UUID),
+            username: Set("meteor".to_owned()),
+        }
+        .insert(db_conn)
+        .await
+        .expect("cannot insert default user");
     }
 
-    fn default_task_builder() -> TestTaskBuilder {
-        let mut builder = TestTaskBuilder::default();
-        builder.user_id(DEFAULT_USER_UUID);
-        builder
+    fn default_task() -> entities::tasks::ActiveModel {
+        entities::tasks::ActiveModel {
+            user_id: Set(DEFAULT_USER_UUID),
+            status: Set(entities::sea_orm_active_enums::TaskStatus::Active),
+            ..Default::default()
+        }
+    }
+
+    fn create_loader(db_conn: &DatabaseConnection) -> DataLoader<PgLoader> {
+        DataLoader::new(
+            PgLoader {
+                db_conn: db_conn.clone(),
+            },
+            tokio::spawn,
+        )
     }
 
     #[googletest::test]
     #[tokio::test]
     async fn loader_can_load_tasks() -> Result<()> {
         let pg_docker = PgDocker::new().await;
-        let pool = pg_docker.pool();
-        let test_user_uuid = test_uuid(1);
-        insert_default_user(&pg_docker).await;
-        insert_task(
-            pool,
-            default_task_builder()
-                .id(test_uuid(2))
-                .title("test #1")
-                .status(testlib::TaskStatus::Active)
-                .point(Some(1))
-                .build()
-                .unwrap(),
-        )
-        .await;
-        insert_task(
-            pool,
-            default_task_builder()
-                .id(test_uuid(3))
-                .title("test #2")
-                .status(testlib::TaskStatus::Active)
-                .point(Some(2))
-                .build()
-                .unwrap(),
-        )
-        .await;
-        insert_task(
-            pool,
-            default_task_builder()
-                .id(test_uuid(4))
-                .title("test #3")
-                .status(testlib::TaskStatus::Completed)
-                .point(None)
-                .build()
-                .unwrap(),
-        )
-        .await;
+        let db_conn = pg_docker.db_conn();
+        insert_default_user(db_conn).await;
+        entities::tasks::ActiveModel {
+            id: Set(test_uuid(1)),
+            title: Set("test #1".to_owned()),
+            status: Set(entities::sea_orm_active_enums::TaskStatus::Active),
+            point: Set(Some(1)),
+            ..default_task()
+        }
+        .insert(db_conn)
+        .await
+        .unwrap();
+        entities::tasks::ActiveModel {
+            id: Set(test_uuid(2)),
+            title: Set("test #2".to_owned()),
+            status: Set(entities::sea_orm_active_enums::TaskStatus::Active),
+            point: Set(Some(2)),
+            ..default_task()
+        }
+        .insert(db_conn)
+        .await
+        .unwrap();
+        entities::tasks::ActiveModel {
+            id: Set(test_uuid(3)),
+            title: Set("test #3".to_owned()),
+            status: Set(entities::sea_orm_active_enums::TaskStatus::Completed),
+            point: Set(None),
+            ..default_task()
+        }
+        .insert(db_conn)
+        .await
+        .unwrap();
+        let loader = create_loader(db_conn);
 
-        let loader = DataLoader::new(PgLoader { pool: pool.clone() }, tokio::spawn);
         let result = loader
-            .load_many([TaskId(test_uuid(2)), TaskId(test_uuid(4))])
+            .load_many([TaskId(test_uuid(1)), TaskId(test_uuid(3))])
             .await?;
 
         expect_that!(
             result,
             unordered_elements_are![
                 (
-                    eq(TaskId(test_uuid(2))),
-                    matches_pattern!(Task {
-                        id: eq(test_uuid(2)),
+                    eq(TaskId(test_uuid(1))),
+                    pat!(Task {
+                        id: eq(test_uuid(1)),
                         title: eq("test #1"),
                         status: eq(TaskStatus::Active),
                         point: some(eq(1)),
@@ -244,9 +415,9 @@ mod tests {
                     })
                 ),
                 (
-                    eq(TaskId(test_uuid(4))),
-                    matches_pattern!(Task {
-                        id: eq(test_uuid(4)),
+                    eq(TaskId(test_uuid(3))),
+                    pat!(Task {
+                        id: eq(test_uuid(3)),
                         title: eq("test #3"),
                         status: eq(TaskStatus::Completed),
                         point: none(),
@@ -255,69 +426,214 @@ mod tests {
                 ),
             ]
         );
-
         Ok(())
     }
 
     #[googletest::test]
     #[tokio::test]
-    async fn loader_can_load_tasks_planned_in_range() -> Result<()> {
+    async fn get_tasks_with_planned_date_in_range() -> Result<()> {
         let pg_docker = PgDocker::new().await;
-        let pool = pg_docker.pool();
-        insert_default_user(&pg_docker).await;
-        insert_task(
-            pool,
-            default_task_builder()
-                .id(test_uuid(2))
-                .title("test #1")
-                .planned_on(Some(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()))
-                .build()
-                .unwrap(),
-        )
-        .await;
-        insert_task(
-            pool,
-            default_task_builder()
-                .id(test_uuid(3))
-                .title("test #2")
-                .planned_on(Some(NaiveDate::from_ymd_opt(2024, 1, 7).unwrap()))
-                .build()
-                .unwrap(),
-        )
-        .await;
-        insert_task(
-            pool,
-            default_task_builder()
-                .id(test_uuid(4))
-                .title("test #3")
-                .planned_on(Some(NaiveDate::from_ymd_opt(2024, 1, 5).unwrap()))
-                .build()
-                .unwrap(),
-        )
-        .await;
+        let db_conn = pg_docker.db_conn();
+        insert_default_user(db_conn).await;
+        entities::tasks::ActiveModel {
+            id: Set(test_uuid(1)),
+            title: Set("test #1".to_owned()),
+            planned_on: Set(Some(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap())),
+            ..default_task()
+        }
+        .insert(db_conn)
+        .await?;
+        entities::tasks::ActiveModel {
+            id: Set(test_uuid(2)),
+            title: Set("test #2".to_owned()),
+            planned_on: Set(Some(NaiveDate::from_ymd_opt(2024, 1, 7).unwrap())),
+            ..default_task()
+        }
+        .insert(db_conn)
+        .await?;
+        entities::tasks::ActiveModel {
+            id: Set(test_uuid(3)),
+            title: Set("test #3".to_owned()),
+            planned_on: Set(Some(NaiveDate::from_ymd_opt(2024, 1, 5).unwrap())),
+            ..default_task()
+        }
+        .insert(db_conn)
+        .await?;
 
-        let result = get_planned_tasks_in_date_range(
+        let result = list_tasks(
             DEFAULT_USER_UUID,
-            (
-                NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
-                NaiveDate::from_ymd_opt(2024, 1, 6).unwrap(),
-            ),
-            &pool,
+            TaskFilter {
+                planned_date_range: Some(DateRange {
+                    start: NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+                    end: NaiveDate::from_ymd_opt(2024, 1, 6).unwrap(),
+                }),
+            },
+            db_conn,
         )
         .await?;
 
         expect_that!(
             result,
             unordered_elements_are![
-                matches_pattern!(Task {
-                    id: eq(test_uuid(2)),
+                pat!(Task {
+                    id: eq(test_uuid(1)),
                     title: eq("test #1"),
                 }),
-                matches_pattern!(Task {
-                    id: eq(test_uuid(4)),
+                pat!(Task {
+                    id: eq(test_uuid(3)),
                     title: eq("test #3"),
                 }),
             ]
+        );
+        Ok(())
+    }
+
+    #[googletest::test]
+    #[tokio::test]
+    async fn update_task_can_update_title() -> Result<()> {
+        let pg_docker = PgDocker::new().await;
+        let db_conn = pg_docker.db_conn();
+        insert_default_user(db_conn).await;
+        let loader = create_loader(db_conn);
+        entities::tasks::ActiveModel {
+            id: Set(test_uuid(1)),
+            title: Set("title".to_owned()),
+            ..default_task()
+        }
+        .insert(db_conn)
+        .await?;
+
+        let update_result = update_task(
+            DEFAULT_USER_UUID,
+            UpdateTaskInput {
+                id: test_uuid(1),
+                title: Some("updated title".to_owned()),
+                ..Default::default()
+            },
+            db_conn,
+        )
+        .await?;
+        let confirm_result = loader.load_one(TaskId(test_uuid(1))).await?;
+
+        expect_that!(
+            update_result,
+            pat!(Task {
+                id: eq(test_uuid(1)),
+                title: eq("updated title"),
+            })
+        );
+        expect_that!(
+            confirm_result,
+            some(pat!(Task {
+                id: eq(test_uuid(1)),
+                title: eq("updated title"),
+            }))
+        );
+        Ok(())
+    }
+
+    #[googletest::test]
+    #[tokio::test]
+    async fn when_user_id_not_match_in_update_task_returns_not_found() -> Result<()> {
+        let pg_docker = PgDocker::new().await;
+        let db_conn = pg_docker.db_conn();
+        insert_default_user(db_conn).await;
+        let loader = create_loader(db_conn);
+        entities::tasks::ActiveModel {
+            id: Set(test_uuid(1)),
+            title: Set("old title".to_owned()),
+            ..default_task()
+        }
+        .insert(db_conn)
+        .await?;
+
+        let result = update_task(
+            NOT_DEFAULT_USER_UUID,
+            UpdateTaskInput {
+                id: test_uuid(1),
+                title: Some("updated title".to_owned()),
+                ..Default::default()
+            },
+            db_conn,
+        )
+        .await;
+        let confirm_result = loader.load_one(TaskId(test_uuid(1))).await?;
+
+        expect_that!(
+            result,
+            err(pat!(AppError::ResourceNotFound(eq(test_uuid(1)))))
+        );
+        expect_that!(
+            confirm_result,
+            some(pat!(Task {
+                title: eq("old title")
+            }))
+        );
+        Ok(())
+    }
+
+    #[googletest::test]
+    #[tokio::test]
+    async fn delete_task_can_delete_task() -> Result<()> {
+        let pg_docker = PgDocker::new().await;
+        let db_conn = pg_docker.db_conn();
+        insert_default_user(db_conn).await;
+        let loader = create_loader(db_conn);
+        entities::tasks::ActiveModel {
+            id: Set(test_uuid(1)),
+            title: Set("title".to_owned()),
+            ..default_task()
+        }
+        .insert(db_conn)
+        .await?;
+        loader
+            .load_one(TaskId(test_uuid(1)))
+            .await
+            .unwrap()
+            .expect("there should be one task after we inserted one");
+
+        let result = delete_task(DEFAULT_USER_UUID, TaskId(test_uuid(1)), db_conn).await;
+        let confirm_result = loader.load_one(TaskId(test_uuid(1))).await;
+
+        expect_that!(result, ok(()));
+        expect_that!(confirm_result, ok(none()));
+
+        Ok(())
+    }
+
+    #[googletest::test]
+    #[tokio::test]
+    async fn when_user_id_not_match_in_delete_task_returns_not_found() -> Result<()> {
+        let pg_docker = PgDocker::new().await;
+        let db_conn = pg_docker.db_conn();
+        insert_default_user(db_conn).await;
+        let loader = create_loader(db_conn);
+        entities::tasks::ActiveModel {
+            id: Set(test_uuid(1)),
+            title: Set("title".to_owned()),
+            ..default_task()
+        }
+        .insert(db_conn)
+        .await?;
+        loader
+            .load_one(TaskId(test_uuid(1)))
+            .await
+            .unwrap()
+            .expect("there should be one task after we inserted one");
+
+        let result = delete_task(NOT_DEFAULT_USER_UUID, TaskId(test_uuid(1)), db_conn).await;
+        let confirm_result = loader.load_one(TaskId(test_uuid(1))).await?;
+
+        expect_that!(
+            result,
+            err(pat!(AppError::ResourceNotFound(eq(test_uuid(1)))))
+        );
+        expect_that!(
+            confirm_result,
+            some(pat!(Task {
+                id: eq(test_uuid(1)),
+                title: eq("title")
+            }))
         );
 
         Ok(())

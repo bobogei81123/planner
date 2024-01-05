@@ -5,10 +5,9 @@ use std::str::FromStr;
 
 use common::{Result, TestServer, UserSession};
 use googletest::prelude::*;
-use planner_backend::build_app;
-use reqwest::Response;
-use serde_json::json;
-use sqlx::PgPool;
+
+use planner_backend::entities;
+use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
 use testlib::{test_uuid, PgDocker};
 use uuid::Uuid;
 
@@ -17,15 +16,29 @@ use crate::matchers::{json_number, json_string, uuid_str};
 const TEST_USERNAME: &str = "meteor";
 const TEST_USER_UUID: Uuid = test_uuid(1);
 
+async fn insert_test_user(id: Uuid, username: String, db_conn: &DatabaseConnection) -> Result<()> {
+    entities::users::ActiveModel {
+        id: Set(id),
+        username: Set(username),
+    }
+    .insert(db_conn)
+    .await?;
+
+    Ok(())
+}
+
 #[googletest::test]
 #[tokio::test]
 async fn user_can_login() -> Result<()> {
     let pg_docker = PgDocker::new().await;
-    pg_docker
-        .insert_test_user(TEST_USERNAME, TEST_USER_UUID)
-        .await
-        .expect("cannot insert test user");
-    let server = TestServer::spawn(pg_docker.pool().clone()).await;
+    insert_test_user(
+        TEST_USER_UUID,
+        TEST_USERNAME.to_owned(),
+        pg_docker.db_conn(),
+    )
+    .await
+    .expect("cannot insert test user");
+    let server = TestServer::spawn(pg_docker.db_conn().clone()).await;
     let _ = UserSession::login_as(server, TEST_USERNAME).await?;
 
     Ok(())
@@ -35,10 +48,8 @@ async fn user_can_login() -> Result<()> {
 #[tokio::test]
 async fn graphql_can_create_tasks() -> Result<()> {
     let pg_docker = PgDocker::new().await;
-    pg_docker
-        .insert_test_user(TEST_USERNAME, test_uuid(1))
-        .await?;
-    let server = TestServer::spawn(pg_docker.pool().clone()).await;
+    insert_test_user(test_uuid(1), TEST_USERNAME.to_owned(), pg_docker.db_conn()).await?;
+    let server = TestServer::spawn(pg_docker.db_conn().clone()).await;
     let user_session = UserSession::login_as(server, TEST_USERNAME).await?;
 
     let response: serde_json::Value = user_session
@@ -82,10 +93,8 @@ async fn graphql_can_create_tasks() -> Result<()> {
 #[tokio::test]
 async fn graphql_can_modify_tasks() -> Result<()> {
     let pg_docker = PgDocker::new().await;
-    pg_docker
-        .insert_test_user(TEST_USERNAME, test_uuid(1))
-        .await?;
-    let server = TestServer::spawn(pg_docker.pool().clone()).await;
+    insert_test_user(test_uuid(1), TEST_USERNAME.to_owned(), pg_docker.db_conn()).await?;
+    let server = TestServer::spawn(pg_docker.db_conn().clone()).await;
     let user_session = UserSession::login_as(server, TEST_USERNAME).await?;
 
     let create_response: serde_json::Value = user_session
@@ -114,7 +123,6 @@ async fn graphql_can_modify_tasks() -> Result<()> {
             .as_str()
             .unwrap(),
     )?;
-
     let update_response: serde_json::Value = user_session
         .post("/graphql")
         .json(&serde_json::json!({

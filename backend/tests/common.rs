@@ -1,13 +1,10 @@
-use std::{
-    future::IntoFuture,
-    net::{SocketAddr, TcpListener},
-};
+use std::net::{SocketAddr, TcpListener};
 
-use axum::{Router, Server};
-use http::{request, Request};
+use axum::Server;
+
 use planner_backend::build_app;
-use reqwest::{IntoUrl, RequestBuilder};
-use sqlx::PgPool;
+use reqwest::RequestBuilder;
+use sea_orm::DatabaseConnection;
 
 pub type Result<T> = anyhow::Result<T>;
 
@@ -17,8 +14,8 @@ pub struct TestServer {
 }
 
 impl TestServer {
-    pub async fn spawn(pg_pool: PgPool) -> Self {
-        let router = build_app(pg_pool).await;
+    pub async fn spawn(db_conn: DatabaseConnection) -> Self {
+        let router = build_app(db_conn).await;
         let listener =
             TcpListener::bind("127.0.0.1:0").expect("Cannot bind to 127.0.0.1:0 (dynamic port)");
         let addr = listener.local_addr().unwrap();

@@ -13,16 +13,16 @@ import type { TypedDocumentNode as DocumentNode } from '@graphql-typed-document-
  * Therefore it is highly recommended to use the babel or swc plugin for production.
  */
 const documents = {
-    "\n\t\t\t\tmutation UpdateTaskStatus($id: UUID!, $status: TaskStatus!) {\n\t\t\t\t\tupdateTask(input: { id: $id, status: $status }) {\n\t\t\t\t\t\tid\n\t\t\t\t\t\tstatus\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t": types.UpdateTaskStatusDocument,
-    "\n\t\t\t\tmutation UpdateTaskTitle($id: UUID!, $title: String) {\n\t\t\t\t\tupdateTask(input: { id: $id, title: $title }) {\n\t\t\t\t\t\tid\n\t\t\t\t\t\ttitle\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t": types.UpdateTaskTitleDocument,
-    "\n\t\t\t\tmutation UpdateTaskPoint($id: UUID!, $point: Int) {\n\t\t\t\t\tupdateTask(input: { id: $id, point: $point }) {\n\t\t\t\t\t\tid\n\t\t\t\t\t\tpoint\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t": types.UpdateTaskPointDocument,
-    "\n\t\t\t\tmutation UpdateTaskIterations($id: UUID!, $iterations: [UUID!]) {\n\t\t\t\t\tupdateTask(input: { id: $id, iterations: $iterations }) {\n\t\t\t\t\t\tid\n\t\t\t\t\t\titerations {\n\t\t\t\t\t\t\tid\n\t\t\t\t\t\t\tname\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t": types.UpdateTaskIterationsDocument,
-    "\n\t\t\t\tmutation DeleteTask($id: UUID!) {\n\t\t\t\t\tdeleteTask(id: $id)\n\t\t\t\t}\n\t\t\t": types.DeleteTaskDocument,
-    "\n\t\t\tquery allIterations {\n\t\t\t\titerations {\n\t\t\t\t\tid\n\t\t\t\t\tname\n\t\t\t\t}\n\t\t\t}\n\t\t": types.AllIterationsDocument,
-    "\n  mutation CreateTask($title: String!, $iteration: UUID) {\n    createTask(input: { title: $title, iteration: $iteration }) {\n      id\n      title\n      status\n      point\n    }\n  }\n": types.CreateTaskDocument,
-    "\n\t\t\t\tmutation createIteration($name: String) {\n\t\t\t\t\tcreateIteration(input: { name: $name }) {\n\t\t\t\t\t\tid\n\t\t\t\t\t\tname\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t": types.CreateIterationDocument,
-    "\n\t\t\tquery allTasksInIteration($id: UUID!) {\n\t\t\t\titeration(id: $id) {\n\t\t\t\t\tid\n\t\t\t\t\tname\n\t\t\t\t\ttasks {\n\t\t\t\t\t\tid\n\t\t\t\t\t\ttitle\n\t\t\t\t\t\tstatus\n\t\t\t\t\t\tpoint\n            iterations {\n              id\n              name\n            }\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t": types.AllTasksInIterationDocument,
-    "\n\t\t\tquery allTasks {\n\t\t\t\ttasks {\n\t\t\t\t\tid\n\t\t\t\t\ttitle\n\t\t\t\t\tstatus\n\t\t\t\t\tpoint\n          iterations {\n            id\n            name\n          }\n\t\t\t\t}\n\t\t\t}\n\t\t": types.AllTasksDocument,
+    "\n        mutation UpdateTaskStatus($id: UUID!, $status: TaskStatus!) {\n          updateTask(input: { id: $id, status: $status }) {\n            id\n            status\n          }\n        }\n      ": types.UpdateTaskStatusDocument,
+    "\n        mutation UpdateTaskTitle($id: UUID!, $title: String) {\n          updateTask(input: { id: $id, title: $title }) {\n            id\n            title\n          }\n        }\n      ": types.UpdateTaskTitleDocument,
+    "\n        mutation UpdateTaskPoint($id: UUID!, $point: Int) {\n          updateTask(input: { id: $id, point: $point }) {\n            id\n            point\n          }\n        }\n      ": types.UpdateTaskPointDocument,
+    "\n        mutation UpdateTaskIterations($id: UUID!, $iterations: [UUID!]) {\n          updateTask(input: { id: $id, iterations: $iterations }) {\n            id\n            iterations {\n              id\n              name\n            }\n          }\n        }\n      ": types.UpdateTaskIterationsDocument,
+    "\n        mutation DeleteTask($id: UUID!) {\n          deleteTask(id: $id)\n        }\n      ": types.DeleteTaskDocument,
+    "\n      query allIterations {\n        iterations {\n          id\n          name\n        }\n      }\n    ": types.AllIterationsDocument,
+    "\n  mutation CreateTask($input: CreateTaskInput!) {\n    createTask(input: $input) {\n      id\n      title\n      status\n      point\n    }\n  }\n": types.CreateTaskDocument,
+    "\n        mutation createIteration($name: String) {\n          createIteration(input: { name: $name }) {\n            id\n            name\n          }\n        }\n      ": types.CreateIterationDocument,
+    "\n      query allTasksInIteration($id: UUID!) {\n        iteration(id: $id) {\n          id\n          name\n          tasks {\n            id\n            title\n            status\n            point\n            iterations {\n              id\n              name\n            }\n          }\n        }\n      }\n    ": types.AllTasksInIterationDocument,
+    "\n      query allTasks($filter: TaskFilter) {\n        tasks(filter: $filter) {\n          id\n          title\n          status\n          point\n          iterations {\n            id\n            name\n          }\n        }\n      }\n    ": types.AllTasksDocument,
 };
 
 /**
@@ -42,43 +42,43 @@ export function graphql(source: string): unknown;
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n\t\t\t\tmutation UpdateTaskStatus($id: UUID!, $status: TaskStatus!) {\n\t\t\t\t\tupdateTask(input: { id: $id, status: $status }) {\n\t\t\t\t\t\tid\n\t\t\t\t\t\tstatus\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t"): (typeof documents)["\n\t\t\t\tmutation UpdateTaskStatus($id: UUID!, $status: TaskStatus!) {\n\t\t\t\t\tupdateTask(input: { id: $id, status: $status }) {\n\t\t\t\t\t\tid\n\t\t\t\t\t\tstatus\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t"];
+export function graphql(source: "\n        mutation UpdateTaskStatus($id: UUID!, $status: TaskStatus!) {\n          updateTask(input: { id: $id, status: $status }) {\n            id\n            status\n          }\n        }\n      "): (typeof documents)["\n        mutation UpdateTaskStatus($id: UUID!, $status: TaskStatus!) {\n          updateTask(input: { id: $id, status: $status }) {\n            id\n            status\n          }\n        }\n      "];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n\t\t\t\tmutation UpdateTaskTitle($id: UUID!, $title: String) {\n\t\t\t\t\tupdateTask(input: { id: $id, title: $title }) {\n\t\t\t\t\t\tid\n\t\t\t\t\t\ttitle\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t"): (typeof documents)["\n\t\t\t\tmutation UpdateTaskTitle($id: UUID!, $title: String) {\n\t\t\t\t\tupdateTask(input: { id: $id, title: $title }) {\n\t\t\t\t\t\tid\n\t\t\t\t\t\ttitle\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t"];
+export function graphql(source: "\n        mutation UpdateTaskTitle($id: UUID!, $title: String) {\n          updateTask(input: { id: $id, title: $title }) {\n            id\n            title\n          }\n        }\n      "): (typeof documents)["\n        mutation UpdateTaskTitle($id: UUID!, $title: String) {\n          updateTask(input: { id: $id, title: $title }) {\n            id\n            title\n          }\n        }\n      "];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n\t\t\t\tmutation UpdateTaskPoint($id: UUID!, $point: Int) {\n\t\t\t\t\tupdateTask(input: { id: $id, point: $point }) {\n\t\t\t\t\t\tid\n\t\t\t\t\t\tpoint\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t"): (typeof documents)["\n\t\t\t\tmutation UpdateTaskPoint($id: UUID!, $point: Int) {\n\t\t\t\t\tupdateTask(input: { id: $id, point: $point }) {\n\t\t\t\t\t\tid\n\t\t\t\t\t\tpoint\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t"];
+export function graphql(source: "\n        mutation UpdateTaskPoint($id: UUID!, $point: Int) {\n          updateTask(input: { id: $id, point: $point }) {\n            id\n            point\n          }\n        }\n      "): (typeof documents)["\n        mutation UpdateTaskPoint($id: UUID!, $point: Int) {\n          updateTask(input: { id: $id, point: $point }) {\n            id\n            point\n          }\n        }\n      "];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n\t\t\t\tmutation UpdateTaskIterations($id: UUID!, $iterations: [UUID!]) {\n\t\t\t\t\tupdateTask(input: { id: $id, iterations: $iterations }) {\n\t\t\t\t\t\tid\n\t\t\t\t\t\titerations {\n\t\t\t\t\t\t\tid\n\t\t\t\t\t\t\tname\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t"): (typeof documents)["\n\t\t\t\tmutation UpdateTaskIterations($id: UUID!, $iterations: [UUID!]) {\n\t\t\t\t\tupdateTask(input: { id: $id, iterations: $iterations }) {\n\t\t\t\t\t\tid\n\t\t\t\t\t\titerations {\n\t\t\t\t\t\t\tid\n\t\t\t\t\t\t\tname\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t"];
+export function graphql(source: "\n        mutation UpdateTaskIterations($id: UUID!, $iterations: [UUID!]) {\n          updateTask(input: { id: $id, iterations: $iterations }) {\n            id\n            iterations {\n              id\n              name\n            }\n          }\n        }\n      "): (typeof documents)["\n        mutation UpdateTaskIterations($id: UUID!, $iterations: [UUID!]) {\n          updateTask(input: { id: $id, iterations: $iterations }) {\n            id\n            iterations {\n              id\n              name\n            }\n          }\n        }\n      "];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n\t\t\t\tmutation DeleteTask($id: UUID!) {\n\t\t\t\t\tdeleteTask(id: $id)\n\t\t\t\t}\n\t\t\t"): (typeof documents)["\n\t\t\t\tmutation DeleteTask($id: UUID!) {\n\t\t\t\t\tdeleteTask(id: $id)\n\t\t\t\t}\n\t\t\t"];
+export function graphql(source: "\n        mutation DeleteTask($id: UUID!) {\n          deleteTask(id: $id)\n        }\n      "): (typeof documents)["\n        mutation DeleteTask($id: UUID!) {\n          deleteTask(id: $id)\n        }\n      "];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n\t\t\tquery allIterations {\n\t\t\t\titerations {\n\t\t\t\t\tid\n\t\t\t\t\tname\n\t\t\t\t}\n\t\t\t}\n\t\t"): (typeof documents)["\n\t\t\tquery allIterations {\n\t\t\t\titerations {\n\t\t\t\t\tid\n\t\t\t\t\tname\n\t\t\t\t}\n\t\t\t}\n\t\t"];
+export function graphql(source: "\n      query allIterations {\n        iterations {\n          id\n          name\n        }\n      }\n    "): (typeof documents)["\n      query allIterations {\n        iterations {\n          id\n          name\n        }\n      }\n    "];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n  mutation CreateTask($title: String!, $iteration: UUID) {\n    createTask(input: { title: $title, iteration: $iteration }) {\n      id\n      title\n      status\n      point\n    }\n  }\n"): (typeof documents)["\n  mutation CreateTask($title: String!, $iteration: UUID) {\n    createTask(input: { title: $title, iteration: $iteration }) {\n      id\n      title\n      status\n      point\n    }\n  }\n"];
+export function graphql(source: "\n  mutation CreateTask($input: CreateTaskInput!) {\n    createTask(input: $input) {\n      id\n      title\n      status\n      point\n    }\n  }\n"): (typeof documents)["\n  mutation CreateTask($input: CreateTaskInput!) {\n    createTask(input: $input) {\n      id\n      title\n      status\n      point\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n\t\t\t\tmutation createIteration($name: String) {\n\t\t\t\t\tcreateIteration(input: { name: $name }) {\n\t\t\t\t\t\tid\n\t\t\t\t\t\tname\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t"): (typeof documents)["\n\t\t\t\tmutation createIteration($name: String) {\n\t\t\t\t\tcreateIteration(input: { name: $name }) {\n\t\t\t\t\t\tid\n\t\t\t\t\t\tname\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t"];
+export function graphql(source: "\n        mutation createIteration($name: String) {\n          createIteration(input: { name: $name }) {\n            id\n            name\n          }\n        }\n      "): (typeof documents)["\n        mutation createIteration($name: String) {\n          createIteration(input: { name: $name }) {\n            id\n            name\n          }\n        }\n      "];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n\t\t\tquery allTasksInIteration($id: UUID!) {\n\t\t\t\titeration(id: $id) {\n\t\t\t\t\tid\n\t\t\t\t\tname\n\t\t\t\t\ttasks {\n\t\t\t\t\t\tid\n\t\t\t\t\t\ttitle\n\t\t\t\t\t\tstatus\n\t\t\t\t\t\tpoint\n            iterations {\n              id\n              name\n            }\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t"): (typeof documents)["\n\t\t\tquery allTasksInIteration($id: UUID!) {\n\t\t\t\titeration(id: $id) {\n\t\t\t\t\tid\n\t\t\t\t\tname\n\t\t\t\t\ttasks {\n\t\t\t\t\t\tid\n\t\t\t\t\t\ttitle\n\t\t\t\t\t\tstatus\n\t\t\t\t\t\tpoint\n            iterations {\n              id\n              name\n            }\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t"];
+export function graphql(source: "\n      query allTasksInIteration($id: UUID!) {\n        iteration(id: $id) {\n          id\n          name\n          tasks {\n            id\n            title\n            status\n            point\n            iterations {\n              id\n              name\n            }\n          }\n        }\n      }\n    "): (typeof documents)["\n      query allTasksInIteration($id: UUID!) {\n        iteration(id: $id) {\n          id\n          name\n          tasks {\n            id\n            title\n            status\n            point\n            iterations {\n              id\n              name\n            }\n          }\n        }\n      }\n    "];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n\t\t\tquery allTasks {\n\t\t\t\ttasks {\n\t\t\t\t\tid\n\t\t\t\t\ttitle\n\t\t\t\t\tstatus\n\t\t\t\t\tpoint\n          iterations {\n            id\n            name\n          }\n\t\t\t\t}\n\t\t\t}\n\t\t"): (typeof documents)["\n\t\t\tquery allTasks {\n\t\t\t\ttasks {\n\t\t\t\t\tid\n\t\t\t\t\ttitle\n\t\t\t\t\tstatus\n\t\t\t\t\tpoint\n          iterations {\n            id\n            name\n          }\n\t\t\t\t}\n\t\t\t}\n\t\t"];
+export function graphql(source: "\n      query allTasks($filter: TaskFilter) {\n        tasks(filter: $filter) {\n          id\n          title\n          status\n          point\n          iterations {\n            id\n            name\n          }\n        }\n      }\n    "): (typeof documents)["\n      query allTasks($filter: TaskFilter) {\n        tasks(filter: $filter) {\n          id\n          title\n          status\n          point\n          iterations {\n            id\n            name\n          }\n        }\n      }\n    "];
 
 export function graphql(source: string) {
   return (documents as any)[source] ?? {};

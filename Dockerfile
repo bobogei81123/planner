@@ -4,6 +4,7 @@ WORKDIR /app
 FROM chef AS rust-prepare-backend
 COPY Cargo.toml Cargo.lock ./
 COPY backend ./backend
+COPY testlib ./testlib
 RUN cargo chef prepare --recipe-path recipe-backend.json
 
 FROM chef AS builder-backend
@@ -11,6 +12,7 @@ COPY --from=rust-prepare-backend /app/recipe-backend.json recipe-backend.json
 RUN cargo chef cook --release --recipe-path recipe-backend.json
 COPY Cargo.toml Cargo.lock ./
 COPY backend ./backend
+COPY testlib ./testlib
 COPY .sqlx ./.sqlx
 RUN cargo build --bin fly-io --release
 

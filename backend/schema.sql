@@ -7,8 +7,7 @@ CREATE TABLE iterations (
   id uuid PRIMARY KEY,
   user_id uuid NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  name varchar NOT NULL,
-  date_range daterange
+  name varchar NOT NULL
 );
 
 CREATE TYPE task_status AS ENUM ('active', 'completed');
