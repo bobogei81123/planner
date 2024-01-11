@@ -47,3 +47,6 @@ testcontainers = "0.15.0"
 testcontainers-modules = { version = "0.1.2", features = ["postgres"] }
 tokio-stream = "0.1.14"
 testlib = { workspace = true }
+
+[build-dependencies]
+async-graphql = { version = "6.0.6", features = ["uuid", "chrono"] }

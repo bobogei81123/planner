@@ -2,8 +2,8 @@
   import ClickToEdit from '$lib/components/clickToEdit.svelte';
   import ClickToEditNumber from '$lib/components/clickToEditNumber.svelte';
   import { AngleDownSolid, AngleUpSolid, TrashBinOutline } from 'flowbite-svelte-icons';
-  import { Button, MultiSelect } from 'flowbite-svelte';
-  import { getContextClient, mutationStore, queryStore } from '@urql/svelte';
+  import { Button, Input, Label, Select } from 'flowbite-svelte';
+  import { getContextClient, mutationStore } from '@urql/svelte';
 
   import { graphql } from '$src/gql';
   import { TaskStatus, type Task } from '$src/gql/graphql';
@@ -16,7 +16,12 @@
     point: number | null;
     iterations: { id: string }[];
   };
+  type InputIteration = {
+    id: string;
+    name: string;
+  };
   export let task: InputTask;
+  export let allIterations: InputIteration[];
 
   let client = getContextClient();
 
@@ -72,7 +77,25 @@
     });
   }
 
-  function updateTaskIterations(iterations: string[]) {
+  function updateTaskPlannedOn() {
+    mutationStore({
+      client,
+      query: graphql(`
+        mutation UpdateTaskPlannedOn($id: UUID!, $plannedOn: NaiveDate) {
+          updateTask(input: { id: $id, plannedOn: $plannedOn }) {
+            id
+            point
+          }
+        }
+      `),
+      variables: { id: task.id, plannedOn: task.plannedOn }
+    });
+    console.log(task);
+  }
+
+  function updateTaskIteration(iteration: string | null) {
+    console.log(iteration);
+    const iterations = iteration === null ? [] : [iteration];
     mutationStore({
       client,
       query: graphql(`
@@ -105,31 +128,27 @@
     });
   }
 
-  const allIterationsStore = queryStore({
-    client,
-    query: graphql(`
-      query allIterations {
-        iterations {
-          id
-          name
-        }
-      }
-    `)
-  });
-  let iterationItems: { value: string; name: string }[] = [];
+  let allSelectItems: { value: string | null; name: string }[];
   $: {
-    if ($allIterationsStore.fetching || $allIterationsStore.error) {
-      iterationItems = [];
-    } else {
-      iterationItems = $allIterationsStore.data!.iterations.map((iteration) => {
-        return {
-          value: iteration.id,
-          name: iteration.name
-        };
-      });
-    }
+    allSelectItems = [
+      { value: null, name: '<None>' },
+      ...allIterations.map((iter) => {
+        return { value: iter.id, name: iter.name };
+      })
+    ];
   }
-  $: selectedIterations = task.iterations.map((iteration) => iteration.id);
+
+  let selectedIterationShadow: string | null = null;
+  function getSelectedIterationId(iterations: { id: string }[]): null | string {
+    if (iterations.length == 0) {
+      return null;
+    }
+    return iterations[0].id;
+  }
+  $: {
+    selectedIterationShadow = getSelectedIterationId(task.iterations);
+  }
+  $: selectedIteration = selectedIterationShadow;
 
   let expanded = false;
 </script>
@@ -187,18 +206,28 @@
   </div>
 
   {#if expanded}
-    <div class="flex items-center justify-between w-full h-20 p-4 gap-x-4">
-      <div class="flex grow">
-        <MultiSelect
-          items={iterationItems}
-          bind:value={selectedIterations}
-          on:selected={({ detail: newIterations }) =>
-            updateTaskIterations(newIterations.map((iteration) => iteration.value))}
-          class="w-full"
-        />
+    <div class="px-4 py-2 grid grid-cols-2 gap-6">
+      <div>
+        <Label class="text-md">
+          <b>Planned On</b>
+          <Input type="date" bind:value={task.plannedOn} on:change={updateTaskPlannedOn} />
+        </Label>
       </div>
+      <div>
+        <Label class="text-md">
+          <b>Iteration</b>
+          <Select
+            items={allSelectItems}
+            bind:value={selectedIteration}
+            on:change={() => updateTaskIteration(selectedIteration)}
+            class="w-full"
+          />
+        </Label>
+      </div>
+    </div>
+    <div class="flex justify-end px-4 py-2 mb-2">
       <div class="w-30">
-        <Button color="red" class="mr-4" on:click={deleteTask}>
+        <Button color="red" class="mr-4 w-full" on:click={deleteTask}>
           <TrashBinOutline class="mr-2" />Delete
         </Button>
       </div>

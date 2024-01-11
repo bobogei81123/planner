@@ -4,7 +4,7 @@ import { cacheExchange, type UpdatesConfig } from '@urql/exchange-graphcache';
 export function getCacheExchange(): Exchange {
   const updatesConfig: UpdatesConfig = {
     Mutation: {
-      createTask(_result, args, cache) {
+      createTask(_result, _args, cache) {
         cache
           .inspectFields('Query')
           .filter((field) => field.fieldName === 'tasks')
@@ -12,7 +12,15 @@ export function getCacheExchange(): Exchange {
             cache.invalidate('Query', field.fieldKey);
           });
       },
-      deleteTask(result, _args, cache) {
+      updateTask(_result, _args, cache) {
+        cache
+          .inspectFields('Query')
+          .filter((field) => field.fieldName === 'tasks')
+          .forEach((field) => {
+            cache.invalidate('Query', field.fieldKey);
+          });
+      },
+      deleteTask(_result, _args, cache) {
         cache
           .inspectFields('Query')
           .filter((field) => field.fieldName === 'tasks')

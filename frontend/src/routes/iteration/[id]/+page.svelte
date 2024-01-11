@@ -5,7 +5,6 @@
   import { checkNonNull } from '$lib/type_helpers';
   import TaskCard from '$lib/components/taskCard.svelte';
   import { graphql } from '$src/gql';
-  import type { Task } from '$src/gql/graphql';
   import { CREATE_TASK } from '$src/lib/task';
 
   export let data: { id: string };
@@ -47,7 +46,7 @@
     });
   }
 
-  function sortByTaskId(t1: { id: any }, t2: { id: any }): number {
+  function sortByTaskId(t1: { id: string }, t2: { id: string }): number {
     if (t1.id > t2.id) {
       return 1;
     } else if (t1.id < t2.id) {

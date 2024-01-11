@@ -5,6 +5,6 @@ export function checkNonNull<T>(x: T): NonNullable<T> {
   return x;
 }
 
-export function orElse<T>(x: T, f: NonNullable<T>): NonNullable<T> {
+export function unwrapOr<T>(x: T, f: NonNullable<T>): NonNullable<T> {
   return x ?? f;
 }

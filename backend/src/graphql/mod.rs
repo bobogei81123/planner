@@ -43,7 +43,7 @@ pub fn routes(db_conn: DatabaseConnection) -> Router {
         .with_state(app_state)
 }
 
-pub(crate) type AppSchema = async_graphql::Schema<QueryRoot, MutationRoot, EmptySubscription>;
+pub type AppSchema = async_graphql::Schema<QueryRoot, MutationRoot, EmptySubscription>;
 
 pub(crate) struct QueryRoot;
 #[Object]

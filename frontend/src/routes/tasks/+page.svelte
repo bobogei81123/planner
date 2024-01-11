@@ -8,7 +8,7 @@
   import { checkNonNull } from '$lib/type_helpers';
   import TaskCard from '$lib/components/taskCard.svelte';
   import { graphql } from '$src/gql';
-  import type { CreateTaskInput, Task } from '$src/gql/graphql';
+  import type { CreateTaskInput } from '$src/gql/graphql';
   import { CREATE_TASK } from '$lib/task';
 
   let client = getContextClient();
@@ -96,6 +96,7 @@
           title
           status
           point
+          plannedOn
           iterations {
             id
             name
@@ -122,7 +123,7 @@
     createTaskTitle = '';
   }
 
-  function sortByTaskId(t1: { id: any }, t2: { id: any }): number {
+  function sortByTaskId(t1: { id: string }, t2: { id: string }): number {
     if (t1.id > t2.id) {
       return 1;
     } else if (t1.id < t2.id) {
@@ -131,6 +132,18 @@
       return 0;
     }
   }
+
+  const allIterationsStore = queryStore({
+    client,
+    query: graphql(`
+      query allIterations {
+        iterations {
+          id
+          name
+        }
+      }
+    `)
+  });
 </script>
 
 <div class="flex flex-col mt-5 w-1/3">
@@ -165,9 +178,11 @@
     <p>On no... {$allTasksStore.error.message}</p>
   {:else}
     {@const tasks = checkNonNull($allTasksStore.data).tasks.toSorted(sortByTaskId)}
+    {@const iterations =
+      $allIterationsStore.data != null ? $allIterationsStore.data.iterations : []}
     {#each tasks as task, i (task.id)}
-      <div class="bg-white" class:border-b-2={i != tasks.length - 1}>
-        <TaskCard {task} />
+      <div class="bg-white mb-2" class:border-b-2={i != tasks.length - 1}>
+        <TaskCard {task} allIterations={iterations} />
       </div>
     {/each}
   {/if}
