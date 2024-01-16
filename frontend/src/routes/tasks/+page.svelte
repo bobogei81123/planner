@@ -1,77 +1,37 @@
 <script lang="ts">
   import { getContextClient, mutationStore, queryStore } from '@urql/svelte';
-  import { ArrowLeftOutline, ArrowRightOutline, PlusSolid } from 'flowbite-svelte-icons';
-  import { Button, Select } from 'flowbite-svelte';
-  import { addWeeks, formatISO, startOfWeek } from 'date-fns';
   import log from 'loglevel';
 
   import { checkNonNull } from '$lib/type_helpers';
   import TaskCard from '$lib/components/taskCard.svelte';
   import { graphql } from '$src/gql';
-  import type { CreateTaskInput } from '$src/gql/graphql';
+  import type { AllTasksQuery, CreateTaskInput } from '$src/gql/graphql';
   import { CREATE_TASK } from '$lib/task';
+  import * as Tabs from '$src/lib/components/ui/tabs';
+  import { Button } from '$src/lib/components/ui/button';
+  import { ChevronLeft, ChevronRight, Plus } from 'lucide-svelte';
+  import Separator from '$src/lib/components/ui/separator/separator.svelte';
+  import Input from '$src/lib/components/ui/input/input.svelte';
+  import { Week, formatISODate } from '$lib/datetime';
 
   let client = getContextClient();
 
-  const viewOptions = [
-    { value: 'all', name: 'All Tasks' },
-    { value: 'weekly', name: 'Weekly Tasks' }
-  ];
   type AllViews = 'all' | 'weekly';
   let selectedView: AllViews = 'weekly';
-
-  class Week {
-    #firstDateOfWeek: Date;
-
-    constructor(firstDateOfWeek: Date) {
-      this.#firstDateOfWeek = firstDateOfWeek;
-    }
-
-    static ofDate(date: Date): Week {
-      return new Week(startOfWeek(date));
-    }
-
-    startDate(): Date {
-      return this.#firstDateOfWeek;
-    }
-
-    endDate(): Date {
-      return addWeeks(this.#firstDateOfWeek, 1);
-    }
-
-    nextWeek(): Week {
-      return Week.ofDate(addWeeks(this.#firstDateOfWeek, 1));
-    }
-
-    prevWeek(): Week {
-      return Week.ofDate(addWeeks(this.#firstDateOfWeek, -1));
-    }
-  }
-  let selectedWeek: Week | null;
-  $: {
-    if (selectedView == 'all') {
-      selectedWeek = null;
-    } else {
-      selectedWeek = Week.ofDate(new Date());
-    }
-  }
+  let selectedWeek: Week | null = Week.ofDate(new Date());
   function goToNextWeek() {
     if (selectedWeek == null) {
-      log.warn('`selectedWeek` is null but `advanceWeek` is called. This should not happen');
+      log.warn('bug: `selectedWeek` is null but `advanceWeek` is called.');
       return;
     }
     selectedWeek = selectedWeek.nextWeek();
   }
   function goToPrevWeek() {
     if (selectedWeek == null) {
-      log.warn('`selectedWeek` is null but `advanceWeek` is called. This should not happen');
+      log.warn('bug: `selectedWeek` is null but `advanceWeek` is called.');
       return;
     }
     selectedWeek = selectedWeek.prevWeek();
-  }
-
-  function formatISODate(date: Date): string {
-    return formatISO(date, { representation: 'date' });
   }
 
   function getTaskFilter(selectedView: AllViews, selectedWeek: Week | null) {
@@ -108,6 +68,12 @@
       filter: getTaskFilter(selectedView, selectedWeek)
     }
   });
+  let tasks: AllTasksQuery['tasks'];
+  $: {
+    if (!$allTasksStore.error && !$allTasksStore.fetching && !$allTasksStore.stale) {
+      tasks = $allTasksStore.data!.tasks;
+    }
+  }
 
   let createTaskTitle = '';
   function createTask() {
@@ -146,44 +112,59 @@
   });
 </script>
 
-<div class="flex flex-col mt-5 w-1/3">
+<div class="flex flex-col mt-5 w-2/5">
   <div class="flex justify-center flex-col mb-5">
-    <Select class="mt-2" items={viewOptions} bind:value={selectedView} />
-    {#if selectedView == 'weekly'}
-      {@const week = checkNonNull(selectedWeek)}
-      <div class="flex items-center justify-center h-12">
-        <Button pill={true} class="!p-2" on:click={goToPrevWeek}>
-          <ArrowLeftOutline class="w-3 h-3" />
-        </Button>
-        <span class="text-xl mx-3">
-          {formatISODate(week.startDate())} – {formatISODate(week.endDate())}
-        </span>
-        <Button pill={true} class="!p-2" on:click={goToNextWeek}>
-          <ArrowRightOutline class="w-3 h-3" />
-        </Button>
-      </div>
+    <Tabs.Root bind:value={selectedView}>
+      <Tabs.List class="w-full grid grid-cols-3">
+        <Tabs.Trigger value="all">All Tasks</Tabs.Trigger>
+        <Tabs.Trigger value="weekly">Weekly Tasks</Tabs.Trigger>
+        <Tabs.Trigger value="iterations">Iterations</Tabs.Trigger>
+      </Tabs.List>
+      <Tabs.Content value="weekly">
+        {#if selectedView == 'weekly'}
+          {@const week = checkNonNull(selectedWeek)}
+          <div class="flex items-center justify-center h-12">
+            <Button variant="outline" size="icon" on:click={goToPrevWeek}>
+              <ChevronLeft class="w-5 h-5" />
+            </Button>
+            <span class="text-xl mx-3">
+              {formatISODate(week.startDate())} – {formatISODate(week.endDate())}
+            </span>
+            <Button variant="outline" size="icon" on:click={goToNextWeek}>
+              <ChevronRight class="w-5 h-5" />
+            </Button>
+          </div>
+        {/if}
+      </Tabs.Content>
+    </Tabs.Root>
+  </div>
+  <Separator />
+  <div class="mt-5">
+    <div class="flex items-center h-16 mb-5">
+      <form class="w-full h-full mr-5" on:submit|preventDefault={createTask}>
+        <Input
+          class="w-full h-full px-3 text-lg focus-visible:border-input"
+          type="text"
+          bind:value={createTaskTitle}
+          placeholder="Enter task title to create a new task"
+        />
+      </form>
+      <Button class="h-full w-15" on:click={createTask}>
+        <Plus class="w-7 h-7" />
+      </Button>
+    </div>
+    {#if $allTasksStore.fetching}
+      <p>Loading...</p>
+    {:else if $allTasksStore.error}
+      <p>On no... {$allTasksStore.error.message}</p>
+    {:else}
+      {@const iterations =
+        $allIterationsStore.data != null ? $allIterationsStore.data.iterations : []}
+      {#each tasks as task, i (task.id)}
+        <div class:mt-3={i > 0}>
+          <TaskCard {task} allIterations={iterations} />
+        </div>
+      {/each}
     {/if}
   </div>
-  <div class="flex items-center h-16 bg-white mb-5">
-    <div class="relative w-16 flex justify-center items-center">
-      <PlusSolid />
-    </div>
-    <form class="w-full h-full mr-5" on:submit|preventDefault={createTask}>
-      <input class="w-full h-full px-3" type="text" bind:value={createTaskTitle} />
-    </form>
-  </div>
-  {#if $allTasksStore.fetching}
-    <p>Loading...</p>
-  {:else if $allTasksStore.error}
-    <p>On no... {$allTasksStore.error.message}</p>
-  {:else}
-    {@const tasks = checkNonNull($allTasksStore.data).tasks.toSorted(sortByTaskId)}
-    {@const iterations =
-      $allIterationsStore.data != null ? $allIterationsStore.data.iterations : []}
-    {#each tasks as task, i (task.id)}
-      <div class="bg-white mb-2" class:border-b-2={i != tasks.length - 1}>
-        <TaskCard {task} allIterations={iterations} />
-      </div>
-    {/each}
-  {/if}
 </div>

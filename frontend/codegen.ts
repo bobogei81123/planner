@@ -9,6 +9,9 @@ const config: CodegenConfig = {
       config: {
         useTypeImports: true
       }
+    },
+    './src/generated-introspection.json': {
+      plugins: ['urql-introspection'],
     }
   }
 };

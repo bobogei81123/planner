@@ -1,4 +1,4 @@
-use std::{fmt::Display, sync::Arc};
+use std::{fmt::Display, sync::Arc, time::Duration};
 
 use async_graphql::{
     dataloader::DataLoader, http::GraphiQLSource, Context, EmptySubscription, ErrorExtensions,
@@ -43,7 +43,7 @@ pub fn routes(db_conn: DatabaseConnection) -> Router {
         .with_state(app_state)
 }
 
-pub type AppSchema = async_graphql::Schema<QueryRoot, MutationRoot, EmptySubscription>;
+pub(crate) type AppSchema = async_graphql::Schema<QueryRoot, MutationRoot, EmptySubscription>;
 
 pub(crate) struct QueryRoot;
 #[Object]

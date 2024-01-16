@@ -1,6 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
 
+  import Input from '../ui/input/input.svelte';
+
   export let value: string;
   let originValue: string;
   let editing = false;
@@ -29,17 +31,19 @@
 </script>
 
 {#if editing}
-  <form on:submit|preventDefault={endEditing}>
-    <input
-      class="w-full bg-inherit text-lg"
-      type="text"
-      bind:value
-      on:blur={endEditing}
-      use:initFocus
-    />
-  </form>
+  <div class="-translate-x-1">
+    <form on:submit|preventDefault={endEditing}>
+      <input
+        class="w-full bg-inherit text-lg px-1 rounded-md border focus-visible:border-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background"
+        type="text"
+        bind:value
+        on:blur={endEditing}
+        use:initFocus
+      />
+    </form>
+  </div>
 {:else}
-  <span on:click={startEditing} class="px-2 text-lg">
+  <span on:click={startEditing} class="text-lg">
     {value}
   </span>
 {/if}
