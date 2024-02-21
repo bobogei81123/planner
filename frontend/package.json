@@ -39,9 +39,6 @@
     "eslint": "^8.56.0",
     "eslint-config-prettier": "^8.10.0",
     "eslint-plugin-svelte": "^2.35.1",
-    "flowbite": "^1.8.1",
-    "flowbite-svelte": "^0.44.22",
-    "flowbite-svelte-icons": "^0.4.5",
     "graphql": "^16.8.1",
     "loglevel": "^1.8.1",
     "mode-watcher": "^0.1.2",
@@ -67,6 +64,7 @@
     "cmdk-sv": "^0.0.13",
     "lucide-svelte": "^0.309.0",
     "tailwind-merge": "^2.2.0",
-    "tailwind-variants": "^0.1.20"
+    "tailwind-variants": "^0.1.20",
+    "vaul-svelte": "^0.2.3"
   }
 }

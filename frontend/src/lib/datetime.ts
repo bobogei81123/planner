@@ -1,4 +1,4 @@
-import { addWeeks, formatISO, startOfWeek } from 'date-fns';
+import { addWeeks, endOfWeek, formatISO, startOfWeek } from 'date-fns';
 
 export class Week {
   #firstDateOfWeek: Date;
@@ -8,11 +8,15 @@ export class Week {
   }
 
   static ofDate(date: Date): Week {
-    return new Week(startOfWeek(date));
+    return new Week(startOfWeek(date, { weekStartsOn: 1 }));
   }
 
   startDate(): Date {
     return this.#firstDateOfWeek;
+  }
+
+  lastDate(): Date {
+    return endOfWeek(this.#firstDateOfWeek, { weekStartsOn: 1 });
   }
 
   endDate(): Date {
@@ -31,3 +35,5 @@ export class Week {
 export function formatISODate(date: Date): string {
   return formatISO(date, { representation: 'date' });
 }
+
+export const ALL_WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];

@@ -2,5 +2,6 @@
 
 pub use super::iterations::Entity as Iterations;
 pub use super::iterations_tasks::Entity as IterationsTasks;
+pub use super::task_schedule::Entity as TaskSchedule;
 pub use super::tasks::Entity as Tasks;
 pub use super::users::Entity as Users;

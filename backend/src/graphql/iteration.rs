@@ -12,25 +12,19 @@ use super::{
     AppResult, DbResult, PgLoader,
 };
 
-mod hidden {
-    use sea_orm::Value;
-    use uuid::Uuid;
-
-    #[repr(transparent)]
-    #[derive(
-        Copy,
-        Clone,
-        Eq,
-        PartialEq,
-        Hash,
-        Debug,
-        sqlx::Type,
-        async_graphql::NewType,
-        sea_orm::DeriveValueType,
-    )]
-    pub(crate) struct IterationId(pub Uuid);
-}
-pub(crate) use hidden::IterationId;
+#[repr(transparent)]
+#[derive(
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    Hash,
+    Debug,
+    sqlx::Type,
+    async_graphql::NewType,
+    sea_orm::DeriveValueType,
+)]
+pub(crate) struct IterationId(pub Uuid);
 
 #[derive(Clone, Debug, sqlx::FromRow, async_graphql::SimpleObject)]
 #[graphql(complex)]

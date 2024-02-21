@@ -11,7 +11,7 @@ const config: CodegenConfig = {
       }
     },
     './src/generated-introspection.json': {
-      plugins: ['urql-introspection'],
+      plugins: ['urql-introspection']
     }
   }
 };

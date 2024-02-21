@@ -10,6 +10,7 @@ mod auth;
 mod db;
 pub mod entities;
 mod graphql;
+mod batch_job;
 
 // pub async fn build_app(pg_pool: PgPool) -> Router {
 pub async fn build_app(pg_conn: DatabaseConnection) -> Router {

@@ -3,11 +3,7 @@
 </script>
 
 <div class="relative flex justify-center items-center">
-  <button
-    class="w-10 h-10 border rounded-full"
-    class:bg-zinc-300={checked}
-    on:click
-  />
+  <button class="w-10 h-10 border rounded-full" class:bg-zinc-300={checked} on:click />
   <div class="absolute w-6 h-6 pointer-events-none" class:hidden={!checked}>
     <svg class="w-full h-full" viewBox="0 0 17.837 17.837">
       <path

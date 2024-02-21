@@ -1,20 +1,18 @@
 <script lang="ts">
-  import { Label } from 'flowbite-svelte';
   import { getContextClient, mutationStore } from '@urql/svelte';
   import { parseDate, type DateValue } from '@internationalized/date';
 
   import { graphql } from '$src/gql';
   import { TaskStatus, type Task } from '$src/gql/graphql';
-  import * as Popover from '$lib/components/ui/popover';
-  import { Calendar } from '$lib/components/ui/calendar';
   import { Button } from '$lib/components/ui/button';
   import * as Select from '$lib/components/ui/select';
-  import { cn } from '$lib/utils';
   import ClickToEdit from '$lib/components/taskCard/clickToEdit.svelte';
   import ClickToEditNumber from '$lib/components/taskCard/clickToEditNumber.svelte';
-  import { CalendarIcon, ChevronsUpDown, Trash2 } from 'lucide-svelte';
+  import { ChevronsUpDown, Trash2 } from 'lucide-svelte';
   import CircleCheckButton from './taskCard/circleCheckButton.svelte';
   import { Collapsible } from 'bits-ui';
+  import DateSelector from './dateSelector.svelte';
+  import { Label } from './ui/label';
 
   type InputTask = {
     id: Task['id'];
@@ -193,50 +191,27 @@
     <Collapsible.Content>
       <div class="px-4 py-2 grid grid-cols-2 gap-6">
         <div>
-          <Label class="text-md">
-            <b>Planned On</b>
-            <Popover.Root>
-              <Popover.Trigger asChild let:builder>
-                <Button
-                  variant="outline"
-                  class={cn(
-                    'w-full justify-start text-left font-normal',
-                    plannedOnDate == undefined && 'text-muted-foreground'
-                  )}
-                  builders={[builder]}
-                >
-                  <CalendarIcon class="mr-2 h-4 w-4" />
-                  {plannedOnDate != undefined ? plannedOnDate : 'Pick a date'}
-                </Button>
-              </Popover.Trigger>
-              <Popover.Content class="w-auto p-0">
-                <Calendar
-                  bind:value={plannedOnDate}
-                  onValueChange={updateTaskPlannedOn}
-                  initialFocus
-                />
-              </Popover.Content>
-            </Popover.Root>
-          </Label>
+          <Label class="text-md" for={`${taskId}-date-selector`}><b>Planned On</b></Label>
+          <DateSelector
+            bind:value={plannedOnDate}
+            onValueChange={updateTaskPlannedOn}
+            calendarLabel={`${taskId}-date-selector`}
+            initialFocus
+          />
         </div>
         <div>
-          <Label class="text-md">
-            <b>Iteration</b>
-            <Select.Root
-              onSelectedChange={updateTaskIteration}
-              bind:selected={uiSelectedIteration}
-            >
-              <Select.Trigger class="w-full">
-                <Select.Value placeholder="Select an iteration" />
-              </Select.Trigger>
-              <Select.Content>
-                <Select.Item value={null} label="<None>">{'<None>'}</Select.Item>
-                {#each allIterations as item}
-                  <Select.Item value={item.id} label={item.name}>{item.name}</Select.Item>
-                {/each}
-              </Select.Content>
-            </Select.Root>
-          </Label>
+          <Label class="text-md"><b>Iteration</b></Label>
+          <Select.Root onSelectedChange={updateTaskIteration} bind:selected={uiSelectedIteration}>
+            <Select.Trigger class="w-full">
+              <Select.Value placeholder="Select an iteration" />
+            </Select.Trigger>
+            <Select.Content>
+              <Select.Item value={null} label="<None>">{'<None>'}</Select.Item>
+              {#each allIterations as item}
+                <Select.Item value={item.id} label={item.name}>{item.name}</Select.Item>
+              {/each}
+            </Select.Content>
+          </Select.Root>
         </div>
       </div>
       <div class="flex justify-end px-4 py-2 mb-2">

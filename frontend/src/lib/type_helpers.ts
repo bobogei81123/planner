@@ -8,3 +8,5 @@ export function checkNonNull<T>(x: T): NonNullable<T> {
 export function unwrapOr<T>(x: T, f: NonNullable<T>): NonNullable<T> {
   return x ?? f;
 }
+
+export type Maybe<T> = T | null | undefined;

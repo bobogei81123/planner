@@ -13,3 +13,5 @@ package-lock.json
 yarn.lock
 
 /src/gql
+/src/lib/components/ui
+/src/generated-introspection.json

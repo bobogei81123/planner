@@ -5,5 +5,6 @@ pub mod prelude;
 pub mod iterations;
 pub mod iterations_tasks;
 pub mod sea_orm_active_enums;
+pub mod task_schedule;
 pub mod tasks;
 pub mod users;

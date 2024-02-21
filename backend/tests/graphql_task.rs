@@ -11,7 +11,7 @@ use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
 use testlib::{test_uuid, PgDocker};
 use uuid::Uuid;
 
-use crate::matchers::{json_number, json_string, uuid_str};
+use crate::matchers::{json_null, json_number, json_string, uuid_str};
 
 const TEST_USERNAME: &str = "meteor";
 const TEST_USER_UUID: Uuid = test_uuid(1);
@@ -159,7 +159,188 @@ async fn graphql_can_modify_tasks() -> Result<()> {
                     id: json_string(uuid_str(eq(task_id))),
                     title: json_string(eq("test updated")),
                     status: json_string(eq("COMPLETED")),
-                    point: json_number(predicate(|x: &serde_json::Number| x.as_i64().is_some_and(|x| x == 1))),
+                    point: json_number(eq::<i64, _>(1)),
+                }
+            }
+        }
+    );
+    Ok(())
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn graphql_when_point_is_null_in_update_task_unsets_point() -> Result<()> {
+    let pg_docker = PgDocker::new().await;
+    insert_test_user(test_uuid(1), TEST_USERNAME.to_owned(), pg_docker.db_conn()).await?;
+    let server = TestServer::spawn(pg_docker.db_conn().clone()).await;
+    let user_session = UserSession::login_as(server, TEST_USERNAME).await?;
+    let create_response: serde_json::Value = user_session
+        .post("/graphql")
+        .json(&serde_json::json!({
+            "query": r#"
+                mutation {
+                    createTask(
+                        input: {
+                            title: "test",
+                        }
+                    ) {
+                        id
+                    }
+                }
+            "#
+        }))
+        .send()
+        .await?
+        .json()
+        .await?;
+    let task_id = Uuid::from_str(
+        create_response["data"]["createTask"]["id"]
+            .as_str()
+            .unwrap(),
+    )?;
+    let initial_update_response: serde_json::Value = user_session
+        .post("/graphql")
+        .json(&serde_json::json!({
+            "query": format!(r#"
+                mutation {{
+                    updateTask(
+                        input: {{
+                            id: "{task_id}",
+                            point: 1,
+                        }}
+                    ) {{
+                        id
+                        point
+                    }}
+                }}
+            "#),
+        }))
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_that!(initial_update_response["data"]["updateTask"]["point"], eq(1));
+
+    let update_response: serde_json::Value = user_session
+        .post("/graphql")
+        .json(&serde_json::json!({
+            "query": format!(r#"
+                mutation {{
+                    updateTask(
+                        input: {{
+                            id: "{task_id}",
+                            point: null,
+                        }}
+                    ) {{
+                        id
+                        point
+                    }}
+                }}
+            "#),
+        }))
+        .send()
+        .await?
+        .json()
+        .await?;
+
+    expect_that!(
+        update_response,
+        json_obj! {
+            data: json_obj! {
+                updateTask: json_obj! {
+                    id: json_string(uuid_str(eq(task_id))),
+                    point: json_null(),
+                }
+            }
+        }
+    );
+    Ok(())
+}
+
+#[googletest::test]
+#[tokio::test]
+async fn graphql_when_point_is_missing_in_update_task_gets_unmodified() -> Result<()> {
+    let pg_docker = PgDocker::new().await;
+    insert_test_user(test_uuid(1), TEST_USERNAME.to_owned(), pg_docker.db_conn()).await?;
+    let server = TestServer::spawn(pg_docker.db_conn().clone()).await;
+    let user_session = UserSession::login_as(server, TEST_USERNAME).await?;
+
+    let create_response: serde_json::Value = user_session
+        .post("/graphql")
+        .json(&serde_json::json!({
+            "query": r#"
+                mutation {
+                    createTask(
+                        input: {
+                            title: "test",
+                        }
+                    ) {
+                        id
+                    }
+                }
+            "#
+        }))
+        .send()
+        .await?
+        .json()
+        .await?;
+    let task_id = Uuid::from_str(
+        create_response["data"]["createTask"]["id"]
+            .as_str()
+            .unwrap(),
+    )?;
+    let initial_update_response: serde_json::Value = user_session
+        .post("/graphql")
+        .json(&serde_json::json!({
+            "query": format!(r#"
+                mutation {{
+                    updateTask(
+                        input: {{
+                            id: "{task_id}",
+                            point: 1,
+                        }}
+                    ) {{
+                        id
+                        point
+                    }}
+                }}
+            "#),
+        }))
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_that!(initial_update_response["data"]["updateTask"]["point"], eq(1));
+
+    let update_response: serde_json::Value = user_session
+        .post("/graphql")
+        .json(&serde_json::json!({
+            "query": format!(r#"
+                mutation {{
+                    updateTask(
+                        input: {{
+                            id: "{task_id}",
+                            title: "test2",
+                        }}
+                    ) {{
+                        id
+                        point
+                    }}
+                }}
+            "#),
+        }))
+        .send()
+        .await?
+        .json()
+        .await?;
+
+    expect_that!(
+        update_response,
+        json_obj! {
+            data: json_obj! {
+                updateTask: json_obj! {
+                    id: json_string(uuid_str(eq(task_id))),
+                    point: json_number(eq::<i64, _>(1)),
                 }
             }
         }

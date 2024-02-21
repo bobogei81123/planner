@@ -3,6 +3,10 @@ use std::{collections::HashMap, marker::PhantomData};
 use googletest::{matcher::MatcherResult, pat, prelude::Matcher};
 use uuid::Uuid;
 
+pub fn json_null() -> impl Matcher<ActualT = serde_json::Value> {
+    pat!(serde_json::Value::Null)
+}
+
 #[macro_export]
 macro_rules! json_obj {
     ( $( $key:ident: $val:expr),* $(,)? ) => {
@@ -80,10 +84,77 @@ pub fn json_string(
 ) -> impl Matcher<ActualT = serde_json::Value> {
     pat!(serde_json::Value::String(matcher))
 }
-pub fn json_number(
-    matcher: impl Matcher<ActualT = serde_json::Number> + 'static,
-) -> impl Matcher<ActualT = serde_json::Value> {
-    pat!(serde_json::Value::Number(matcher))
+
+pub struct JsonNumberMatcher<T, InnerT>
+where
+    T: Matcher<ActualT = InnerT>,
+    InnerT: TryFromJsonNumber,
+{
+    pub expect: T,
+}
+
+impl<T, InnerT> Matcher for JsonNumberMatcher<T, InnerT>
+where
+    T: Matcher<ActualT = InnerT>,
+    InnerT: TryFromJsonNumber,
+{
+    type ActualT = serde_json::Value;
+
+    fn matches(&self, actual: &Self::ActualT) -> MatcherResult {
+        let serde_json::Value::Number(number) = actual else {
+            return MatcherResult::NoMatch;
+        };
+
+        let Some(number): Option<InnerT> = TryFromJsonNumber::try_from(number) else {
+            return MatcherResult::NoMatch;
+        };
+
+        self.expect.matches(&number)
+    }
+
+    fn describe(&self, matcher_result: MatcherResult) -> String {
+        let prefix = match matcher_result {
+            MatcherResult::Match => "is",
+            MatcherResult::NoMatch => "is not",
+        };
+
+        format!(
+            "{} a JSON number that {}",
+            prefix,
+            self.expect.describe(matcher_result)
+        )
+    }
+}
+
+pub trait TryFromJsonNumber: Sized + Copy {
+    fn try_from(value: &serde_json::Number) -> Option<Self>;
+}
+
+impl TryFromJsonNumber for i64 {
+    fn try_from(value: &serde_json::Number) -> Option<Self> {
+        value.as_i64()
+    }
+}
+
+impl TryFromJsonNumber for u64 {
+    fn try_from(value: &serde_json::Number) -> Option<Self> {
+        value.as_u64()
+    }
+}
+
+impl TryFromJsonNumber for f64 {
+    fn try_from(value: &serde_json::Number) -> Option<Self> {
+        value.as_f64()
+    }
+}
+
+pub fn json_number<InnerT>(
+    matcher: impl Matcher<ActualT = InnerT> + 'static,
+) -> impl Matcher<ActualT = serde_json::Value>
+where
+    InnerT: TryFromJsonNumber,
+{
+    JsonNumberMatcher { expect: matcher }
 }
 
 pub struct UuidStrMatcher<ExpectedM, ActualT>

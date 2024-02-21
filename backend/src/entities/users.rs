@@ -15,6 +15,8 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(has_many = "super::iterations::Entity")]
     Iterations,
+    #[sea_orm(has_many = "super::task_schedule::Entity")]
+    TaskSchedule,
     #[sea_orm(has_many = "super::tasks::Entity")]
     Tasks,
 }
@@ -22,6 +24,12 @@ pub enum Relation {
 impl Related<super::iterations::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Iterations.def()
+    }
+}
+
+impl Related<super::task_schedule::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::TaskSchedule.def()
     }
 }
 

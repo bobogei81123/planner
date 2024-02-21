@@ -1,10 +1,16 @@
 use std::{collections::HashMap, sync::Arc};
 
-use async_graphql::dataloader::{DataLoader, Loader};
+use async_graphql::{
+    dataloader::{DataLoader, Loader},
+    MaybeUndefined,
+};
 use async_trait::async_trait;
+use chrono::Duration;
+use extend::ext;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, IntoActiveModel,
-    ModelTrait, QueryFilter, RuntimeErr, Set, TransactionTrait,
+    ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection, DatabaseTransaction, DbErr,
+    EntityTrait, IntoActiveModel, ModelTrait, QueryFilter, RuntimeErr, Set, TransactionTrait,
+    Unset,
 };
 use uuid::Uuid;
 
@@ -16,29 +22,22 @@ use super::{
     UpdateTaskInput,
 };
 
-// This is due to a bug in sea-orm proc macro that has a conflict with the `Result` we defined.
-mod hidden {
-    use sea_orm::Value;
-    use uuid::Uuid;
-
-    #[repr(transparent)]
-    #[derive(
-        Copy, Clone, Eq, PartialEq, Hash, Debug, async_graphql::NewType, sea_orm::DeriveValueType,
-    )]
-    pub(crate) struct TaskId(pub Uuid);
-}
-pub(crate) use hidden::TaskId;
+#[repr(transparent)]
+#[derive(
+    Copy, Clone, Eq, PartialEq, Hash, Debug, async_graphql::NewType, sea_orm::DeriveValueType,
+)]
+pub(crate) struct TaskId(pub Uuid);
 
 #[derive(Clone, Debug, async_graphql::SimpleObject)]
 #[graphql(complex)]
 pub(super) struct Task {
     id: Uuid,
-    title: String,
-    status: TaskStatus,
-    point: Option<i32>,
+    pub(super) title: String,
+    pub(super) status: TaskStatus,
+    pub(super) point: Option<i32>,
     #[graphql(skip)]
     iterations: Vec<IterationId>,
-    planned_on: Option<chrono::NaiveDate>,
+    pub(super) planned_on: Option<chrono::NaiveDate>,
 }
 
 #[async_graphql::ComplexObject]
@@ -177,7 +176,8 @@ pub(super) async fn list_tasks(
         if start > end {
             return Err(AppError::BadRequest(BadRequestReason::InvalidDateRange))?;
         }
-        query = query.filter(entities::tasks::Column::PlannedOn.between(start, end));
+        query = query
+            .filter(entities::tasks::Column::PlannedOn.between(start, end - Duration::days(1)));
     }
 
     Ok(query
@@ -198,48 +198,101 @@ pub(super) async fn create_task(
     let tx = db_conn.begin().await?;
 
     let task = tx
-        .with(|tx| async move {
+        .with(move |tx| async move {
             let tx = tx.as_ref();
-            let task = entities::tasks::ActiveModel {
-                id: Set(task_id),
-                user_id: Set(user_id),
-                title: Set(input.title),
-                status: Set(TaskStatus::Active.into()),
-                planned_on: Set(input.planned_on),
-                ..Default::default()
-            };
-            let task = task.insert(tx).await?;
-
-            if let Some(iteration) = input.iteration {
-                let result = entities::iterations_tasks::ActiveModel {
-                    iteration_id: Set(iteration),
-                    task_id: Set(task_id),
-                }
-                .insert(tx)
-                .await;
-
-                match result {
-                    Err(DbErr::Exec(RuntimeErr::SqlxError(sqlx::Error::Database(db_err))))
-                        if db_err
-                            .constraint()
-                            .is_some_and(|x| x == "iterations_tasks_iteration_id_fkey") =>
-                    {
-                        return Err(AppError::ResourceNotFound(iteration))
-                    }
-                    Err(err) => return Err(err)?,
-                    Ok(_) => (),
-                }
-            }
-
-            let iterations = task
-                .find_related(entities::iterations_tasks::Entity)
-                .all(tx)
-                .await?;
-            Ok(Task::from_task_and_relation_models(task, iterations))
+            create_task_in_transaction(user_id, input, tx).await
         })
         .await?;
 
     Ok(task)
+}
+
+pub(super) async fn create_task_in_transaction(
+    user_id: Uuid,
+    input: CreateTaskInput,
+    tx: &DatabaseTransaction,
+) -> AppResult<Task> {
+    let task_id = Uuid::new_v4();
+    let task = entities::tasks::ActiveModel {
+        id: Set(task_id),
+        user_id: Set(user_id),
+        title: Set(input.title),
+        status: Set(TaskStatus::Active.into()),
+        point: Set(input.point),
+        planned_on: Set(input.planned_on),
+    };
+    let task = task.insert(tx).await?;
+
+    if let Some(iteration) = input.iteration {
+        let result = entities::iterations_tasks::ActiveModel {
+            iteration_id: Set(iteration),
+            task_id: Set(task_id),
+        }
+        .insert(tx)
+        .await;
+
+        match result {
+            Err(DbErr::Exec(RuntimeErr::SqlxError(sqlx::Error::Database(db_err))))
+                if db_err
+                    .constraint()
+                    .is_some_and(|x| x == "iterations_tasks_iteration_id_fkey") =>
+            {
+                return Err(AppError::ResourceNotFound(iteration))
+            }
+            Err(err) => return Err(err)?,
+            Ok(_) => (),
+        }
+    }
+
+    let iterations = task
+        .find_related(entities::iterations_tasks::Entity)
+        .all(tx)
+        .await?;
+    Ok(Task::from_task_and_relation_models(task, iterations))
+}
+
+// fn set_by_may_be_undefined<T, U>(target: &mut ActiveValue<Option<T>>, maybe: MaybeUndefined<U>)
+// where
+//     T: From<U>,
+// {
+//     match maybe {
+//         MaybeUndefined::Value(x) => *target = Set(Some(x.into())),
+//         MaybeUndefined::Null => *target = Set(Some(option))
+//         MaybeUndefined::Undefined => (),
+//     }
+// }
+
+#[ext]
+impl<T> ActiveValue<Option<T>>
+where
+    Option<T>: Into<sea_orm::Value>,
+{
+    fn set_with_maybe_undefined<U>(&mut self, maybe: MaybeUndefined<U>)
+    where
+        T: From<U>,
+    {
+        match maybe {
+            MaybeUndefined::Value(x) => *self = Set(Some(x.into())),
+            MaybeUndefined::Null => *self = Set(None),
+            MaybeUndefined::Undefined => (),
+        }
+    }
+}
+
+#[ext]
+impl<T> ActiveValue<T>
+where
+    T: Into<sea_orm::Value>,
+{
+    fn set_with_maybe_undefined_non_null<U>(&mut self, maybe: MaybeUndefined<U>)
+    where
+        T: From<U>,
+    {
+        match maybe {
+            MaybeUndefined::Value(x) => *self = Set(x.into()),
+            MaybeUndefined::Null | MaybeUndefined::Undefined => (),
+        }
+    }
 }
 
 pub(super) async fn update_task(
@@ -260,37 +313,31 @@ pub(super) async fn update_task(
                 .await?
                 .ok_or_else(|| AppError::ResourceNotFound(id))?
                 .into_active_model();
-            if let Some(title) = input.title {
-                task.title = Set(title);
-            }
-            if let Some(status) = input.status {
-                task.status = Set(status.into());
-            }
-            if let Some(point) = input.point {
-                task.point = Set(point);
-            }
-            if let Some(planned_on) = input.planned_on {
-                task.planned_on = Set(planned_on);
-            }
+            task.title.set_with_maybe_undefined_non_null(input.title);
+            task.status.set_with_maybe_undefined_non_null(input.status);
+            task.point.set_with_maybe_undefined(input.point);
+            task.planned_on.set_with_maybe_undefined(input.planned_on);
             let task = task.update(db_conn).await?;
 
-            if let Some(iteration) = input.iterations {
+            if let MaybeUndefined::Value(_) | MaybeUndefined::Null = &input.iterations {
                 entities::iterations_tasks::Entity::delete_many()
                     .filter(entities::iterations_tasks::Column::TaskId.eq(id))
                     .exec(tx)
                     .await?;
 
-                entities::iterations_tasks::Entity::insert_many(
-                    iteration
-                        .into_iter()
-                        .map(|iter_id| entities::iterations_tasks::ActiveModel {
-                            iteration_id: Set(iter_id),
-                            task_id: Set(id),
-                        })
-                        .collect::<Vec<_>>(),
-                )
-                .exec(tx)
-                .await?;
+                if let MaybeUndefined::Value(iteration) = input.iterations {
+                    entities::iterations_tasks::Entity::insert_many(
+                        iteration
+                            .into_iter()
+                            .map(|iter_id| entities::iterations_tasks::ActiveModel {
+                                iteration_id: Set(iter_id),
+                                task_id: Set(id),
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                    .exec(tx)
+                    .await?;
+                }
             }
 
             let iterations = task
@@ -507,7 +554,7 @@ mod tests {
             DEFAULT_USER_UUID,
             UpdateTaskInput {
                 id: test_uuid(1),
-                title: Some("updated title".to_owned()),
+                title: MaybeUndefined::Value("updated title".to_owned()),
                 ..Default::default()
             },
             db_conn,
@@ -551,7 +598,7 @@ mod tests {
             NOT_DEFAULT_USER_UUID,
             UpdateTaskInput {
                 id: test_uuid(1),
-                title: Some("updated title".to_owned()),
+                title: MaybeUndefined::Value("updated title".to_owned()),
                 ..Default::default()
             },
             db_conn,

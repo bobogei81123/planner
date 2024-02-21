@@ -128,7 +128,7 @@
               <ChevronLeft class="w-5 h-5" />
             </Button>
             <span class="text-xl mx-3">
-              {formatISODate(week.startDate())} – {formatISODate(week.endDate())}
+              {formatISODate(week.startDate())} – {formatISODate(week.lastDate())}
             </span>
             <Button variant="outline" size="icon" on:click={goToNextWeek}>
               <ChevronRight class="w-5 h-5" />

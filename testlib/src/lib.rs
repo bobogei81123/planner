@@ -1,8 +1,5 @@
 use std::sync::OnceLock;
 
-
-
-
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
 use testcontainers::{clients::Cli, Container};
 use testcontainers_modules::postgres::Postgres;
@@ -47,4 +44,29 @@ impl PgDocker {
 
 pub const fn test_uuid(b: u32) -> Uuid {
     Uuid::from_u128(b as u128)
+}
+
+pub mod time {
+    use chrono::{DateTime, Utc};
+    use std::cell::Cell;
+
+    thread_local! {
+        static NOW: Cell<DateTime<Utc>> = Cell::new(Utc::now());
+    }
+
+    pub struct Local;
+
+    impl Local {
+        pub fn now() -> chrono::DateTime<chrono::Local> {
+            NOW.with(|now| now.get().into())
+        }
+    }
+
+    pub fn set_now<T: Into<DateTime<Utc>>>(val: T) {
+        NOW.with(|now| now.set(val.into()));
+    }
+
+    pub fn advance_now(delta: chrono::Duration) {
+        NOW.with(|now| now.set(now.get() + delta));
+    }
 }

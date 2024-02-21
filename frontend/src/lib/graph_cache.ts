@@ -1,12 +1,15 @@
 import type { Exchange } from '@urql/svelte';
-import { cacheExchange, type Cache, type OptimisticMutationConfig, type UpdatesConfig } from '@urql/exchange-graphcache';
+import {
+  cacheExchange,
+  type Cache,
+  type OptimisticMutationConfig,
+  type UpdatesConfig
+} from '@urql/exchange-graphcache';
 import schema from '$src/generated-introspection.json';
 import { graphql } from '$src/gql';
 
 function allTasksCache(cache: Cache) {
-  return cache
-    .inspectFields('QueryRoot')
-    .filter((field) => field.fieldName === 'tasks');
+  return cache.inspectFields('QueryRoot').filter((field) => field.fieldName === 'tasks');
 }
 
 function invalidateAllTasks(cache: Cache) {
@@ -33,10 +36,9 @@ export function getCacheExchange(): Exchange {
     }
   };
   // TODO: Add optimistic updates.
-  const optimisticConfig: OptimisticMutationConfig = {
-  }
+  const optimisticConfig: OptimisticMutationConfig = {};
   return cacheExchange({
     updates: updatesConfig,
-    schema,
+    schema
   });
 }

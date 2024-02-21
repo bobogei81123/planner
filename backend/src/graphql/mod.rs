@@ -2,7 +2,7 @@ use std::{fmt::Display, sync::Arc, time::Duration};
 
 use async_graphql::{
     dataloader::DataLoader, http::GraphiQLSource, Context, EmptySubscription, ErrorExtensions,
-    Object, Schema,
+    Json, MaybeUndefined, Object, Schema,
 };
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use axum::{
@@ -19,11 +19,15 @@ use crate::{auth::Claims, entities};
 use self::{
     iteration::{list_iterations, Iteration, IterationId},
     task::{create_task, delete_task, list_tasks, update_task, Task, TaskId, TaskStatus},
+    task_schedule::{
+        create_task_schedule, list_task_schedules, random_task_schedule, DateSpec, TaskSchedule,
+    },
 };
 
 mod iteration;
 mod loader;
 mod task;
+pub(crate) mod task_schedule;
 
 pub fn routes(db_conn: DatabaseConnection) -> Router {
     let schema: AppSchema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
@@ -46,6 +50,7 @@ pub fn routes(db_conn: DatabaseConnection) -> Router {
 pub(crate) type AppSchema = async_graphql::Schema<QueryRoot, MutationRoot, EmptySubscription>;
 
 pub(crate) struct QueryRoot;
+
 #[Object]
 impl QueryRoot {
     async fn tasks(
@@ -72,6 +77,13 @@ impl QueryRoot {
             .ok_or(AppError::ResourceNotFound(id))?;
 
         Ok(iteration)
+    }
+
+    async fn task_schedules(&self, ctx: &Context<'_>) -> async_graphql::Result<Vec<TaskSchedule>> {
+        // Ok(vec![random_task_schedule()])
+        list_task_schedules(ctx.user()?.id, ctx.db_conn())
+            .await
+            .map_err(|e| e.extend())
     }
 }
 
@@ -154,22 +166,31 @@ impl MutationRoot {
         //
         // Ok(iteration)
     }
+
+    async fn create_task_schedule(
+        &self,
+        ctx: &Context<'_>,
+        input: CreateTaskScheduleInput,
+    ) -> async_graphql::Result<TaskSchedule> {
+        Ok(create_task_schedule(ctx.user()?.id, input, ctx.db_conn()).await?)
+    }
 }
 
 #[derive(async_graphql::InputObject, Default)]
 struct UpdateTaskInput {
     id: Uuid,
-    title: Option<String>,
-    status: Option<TaskStatus>,
-    point: Option<Option<i32>>,
-    iterations: Option<Vec<Uuid>>,
-    planned_on: Option<Option<NaiveDate>>,
+    title: MaybeUndefined<String>,
+    status: MaybeUndefined<TaskStatus>,
+    point: MaybeUndefined<i32>,
+    iterations: MaybeUndefined<Vec<Uuid>>,
+    planned_on: MaybeUndefined<NaiveDate>,
 }
 
 #[derive(async_graphql::InputObject)]
 struct CreateTaskInput {
     title: String,
     iteration: Option<Uuid>,
+    point: Option<i32>,
     planned_on: Option<NaiveDate>,
 }
 
@@ -180,11 +201,18 @@ struct CreateIterationInput {
     end_date: Option<NaiveDate>,
 }
 
-type AppResult<T> = Result<T, AppError>;
+#[derive(async_graphql::InputObject)]
+struct CreateTaskScheduleInput {
+    date_spec: Json<DateSpec>,
+    task_title: String,
+    task_point: Option<i32>,
+}
+
+pub(crate) type AppResult<T> = Result<T, AppError>;
 type DbResult<T> = Result<T, DbErr>;
 
 #[derive(Debug, thiserror::Error)]
-enum AppError {
+pub(crate) enum AppError {
     #[error("The resource with id = {0} is not found")]
     ResourceNotFound(Uuid),
     #[error("The request is invalid: {0}")]
@@ -196,8 +224,9 @@ enum AppError {
 }
 
 #[derive(Debug)]
-enum BadRequestReason {
+pub(crate) enum BadRequestReason {
     InvalidDateRange,
+    InvalidTaskScheduleSpec,
 }
 
 impl Display for BadRequestReason {
@@ -209,6 +238,9 @@ impl Display for BadRequestReason {
                  Start date or end date must be given if the other is, \
                  and the end date must be later than the start date."
             ),
+            BadRequestReason::InvalidTaskScheduleSpec => {
+                write!(f, "The task schedule date spec JSON is not valid.")
+            }
         }
     }
 }

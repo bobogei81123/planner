@@ -22,7 +22,8 @@ const documents = {
     "\n  mutation CreateTask($input: CreateTaskInput!) {\n    createTask(input: $input) {\n      id\n      title\n      status\n      point\n    }\n  }\n": types.CreateTaskDocument,
     "\n      query allIterations {\n        iterations {\n          id\n          name\n        }\n      }\n    ": types.AllIterationsDocument,
     "\n        mutation createIteration($name: String) {\n          createIteration(input: { name: $name }) {\n            id\n            name\n          }\n        }\n      ": types.CreateIterationDocument,
-    "\n      query allTasksInIteration($id: UUID!) {\n        iteration(id: $id) {\n          id\n          name\n          tasks {\n            id\n            title\n            status\n            point\n            iterations {\n              id\n              name\n            }\n          }\n        }\n      }\n    ": types.AllTasksInIterationDocument,
+    "\n      query allTaskSchedules {\n        taskSchedules {\n          id\n          nextDateToCheck\n          dateSpec\n          taskTitle\n          taskPoint\n        }\n      }\n    ": types.AllTaskSchedulesDocument,
+    "\n        mutation CreateTaskSchedule($input: CreateTaskScheduleInput!) {\n          createTaskSchedule(input: $input) {\n            id\n            nextDateToCheck\n            dateSpec\n            taskTitle\n            taskPoint\n          }\n        }\n      ": types.CreateTaskScheduleDocument,
     "\n      query allTasks($filter: TaskFilter) {\n        tasks(filter: $filter) {\n          id\n          title\n          status\n          point\n          plannedOn\n          iterations {\n            id\n            name\n          }\n        }\n      }\n    ": types.AllTasksDocument,
 };
 
@@ -79,7 +80,11 @@ export function graphql(source: "\n        mutation createIteration($name: Strin
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n      query allTasksInIteration($id: UUID!) {\n        iteration(id: $id) {\n          id\n          name\n          tasks {\n            id\n            title\n            status\n            point\n            iterations {\n              id\n              name\n            }\n          }\n        }\n      }\n    "): (typeof documents)["\n      query allTasksInIteration($id: UUID!) {\n        iteration(id: $id) {\n          id\n          name\n          tasks {\n            id\n            title\n            status\n            point\n            iterations {\n              id\n              name\n            }\n          }\n        }\n      }\n    "];
+export function graphql(source: "\n      query allTaskSchedules {\n        taskSchedules {\n          id\n          nextDateToCheck\n          dateSpec\n          taskTitle\n          taskPoint\n        }\n      }\n    "): (typeof documents)["\n      query allTaskSchedules {\n        taskSchedules {\n          id\n          nextDateToCheck\n          dateSpec\n          taskTitle\n          taskPoint\n        }\n      }\n    "];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n        mutation CreateTaskSchedule($input: CreateTaskScheduleInput!) {\n          createTaskSchedule(input: $input) {\n            id\n            nextDateToCheck\n            dateSpec\n            taskTitle\n            taskPoint\n          }\n        }\n      "): (typeof documents)["\n        mutation CreateTaskSchedule($input: CreateTaskScheduleInput!) {\n          createTaskSchedule(input: $input) {\n            id\n            nextDateToCheck\n            dateSpec\n            taskTitle\n            taskPoint\n          }\n        }\n      "];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */

@@ -29,3 +29,13 @@ CREATE TABLE iterations_tasks (
   FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
   PRIMARY KEY (iteration_id, task_id)
 );
+
+CREATE TABLE task_schedule (
+  id uuid PRIMARY KEY,
+  user_id uuid NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  date_spec json NOT NULL,
+  next_date_to_check date NOT NULL,
+  task_title varchar NOT NULL,
+  task_point integer
+)

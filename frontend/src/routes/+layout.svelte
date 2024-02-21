@@ -1,15 +1,4 @@
 <script lang="ts">
-  import {
-    Input,
-    Label,
-    Modal,
-    Sidebar,
-    SidebarDropdownItem,
-    SidebarDropdownWrapper,
-    SidebarGroup,
-    SidebarItem,
-    SidebarWrapper
-  } from 'flowbite-svelte';
   import '../app.css';
   import {
     Client,
@@ -30,6 +19,8 @@
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import { Sun, Moon } from 'lucide-svelte';
   import { setMode, resetMode } from 'mode-watcher';
+  import { cn } from '$src/lib/utils';
+  import { page } from '$app/stores';
 
   const client = new Client({
     url: '/graphql',
@@ -77,57 +68,48 @@
     newIterationName = null;
     iterationModalIsActive = false;
   }
+
+  const routes = [
+    { name: 'Tasks', href: '/tasks' },
+    { name: 'Task Schedules', href: '/task-schedules' }
+  ];
 </script>
 
-<div class="w-full min-h-screen flex justify-center">
-  <ModeWatcher />
-  <!-- <Sidebar class="absolute left-0"> -->
-  <!--   <SidebarWrapper> -->
-  <!--     <SidebarGroup> -->
-  <!--       <SidebarItem label="All Tasks" href="/tasks" /> -->
-  <!--       <SidebarDropdownWrapper label="Iterations"> -->
-  <!--         {#if $allIterationsStore.data != null && $allIterationsStore.data != undefined} -->
-  <!--           {#each $allIterationsStore.data.iterations as iteration} -->
-  <!--             <SidebarDropdownItem label={iteration.name} href={iterationUrl(iteration.id)} /> -->
-  <!--           {/each} -->
-  <!--           <SidebarDropdownItem -->
-  <!--             label="New Iteration" -->
-  <!--             on:click={() => (iterationModalIsActive = true)} -->
-  <!--           /> -->
-  <!--         {/if} -->
-  <!--       </SidebarDropdownWrapper> -->
-  <!--     </SidebarGroup> -->
-  <!--   </SidebarWrapper> -->
-  <!-- </Sidebar> -->
-  <slot />
+<ModeWatcher />
+<div class="w-full flex-col">
+  <div class="border-b flex justify-between items-center px-6">
+    <nav class="h-12 flex items-center space-x-4">
+      {#each routes as route}
+        {@const isActive = $page.url.pathname.startsWith(route.href)}
+        <a
+          class={cn(
+            'rounded-full px-4 text-muted-foreground transition-colors hover:text-primary',
+            isActive ? 'text-primary bg-muted' : ''
+          )}
+          href={route.href}>{route.name}</a
+        >
+      {/each}
+    </nav>
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild let:builder>
+        <Button builders={[builder]} variant="outline" size="icon">
+          <Sun
+            class="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0"
+          />
+          <Moon
+            class="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100"
+          />
+          <span class="sr-only">Toggle theme</span>
+        </Button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content align="end">
+        <DropdownMenu.Item on:click={() => setMode('light')}>Light</DropdownMenu.Item>
+        <DropdownMenu.Item on:click={() => setMode('dark')}>Dark</DropdownMenu.Item>
+        <DropdownMenu.Item on:click={() => resetMode()}>System</DropdownMenu.Item>
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
+  </div>
+  <div class="w-full min-h-screen flex justify-center">
+    <slot />
+  </div>
 </div>
-
-<DropdownMenu.Root>
-  <DropdownMenu.Trigger asChild let:builder>
-    <Button builders={[builder]} variant="outline" size="icon">
-      <Sun
-        class="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0"
-      />
-      <Moon
-        class="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100"
-      />
-      <span class="sr-only">Toggle theme</span>
-    </Button>
-  </DropdownMenu.Trigger>
-  <DropdownMenu.Content align="end">
-    <DropdownMenu.Item on:click={() => setMode('light')}>Light</DropdownMenu.Item>
-    <DropdownMenu.Item on:click={() => setMode('dark')}>Dark</DropdownMenu.Item>
-    <DropdownMenu.Item on:click={() => resetMode()}>System</DropdownMenu.Item>
-  </DropdownMenu.Content>
-</DropdownMenu.Root>
-
-<!-- <Modal bind:open={iterationModalIsActive} size="xs" autoclose={false}> -->
-<!--   <form class="flex flex-col space-y-6" action="#"> -->
-<!--     <h3 class="mb-4 text-xl font-medium text-gray-900 dark:text-white">Create a new iteration</h3> -->
-<!--     <Label class="space-y-2"> -->
-<!--       <span>Name</span> -->
-<!--       <Input type="text" name="name" placeholder="New Iteration" bind:value={newIterationName} /> -->
-<!--     </Label> -->
-<!--     <Button type="submit" class="w-full" color="red" on:click={createIteration}>Create</Button> -->
-<!--   </form> -->
-<!-- </Modal> -->
