@@ -1,7 +1,5 @@
 use std::future::Future;
 
-use async_trait::async_trait;
-
 use sea_orm::DatabaseTransaction;
 
 pub(crate) struct TransactionWrapper(*mut DatabaseTransaction);
@@ -14,9 +12,8 @@ impl TransactionWrapper {
     }
 }
 
-#[async_trait]
 pub(crate) trait TransactionExt: Sized {
-    async fn with<T, E, F, FUT>(mut self, f: F) -> Result<T, E>
+    async fn with<T, E, F, FUT>(self, f: F) -> Result<T, E>
     where
         T: Send,
         E: From<sea_orm::DbErr> + Send,
@@ -24,7 +21,6 @@ pub(crate) trait TransactionExt: Sized {
         FUT: Future<Output = Result<T, E>> + Send;
 }
 
-#[async_trait]
 impl TransactionExt for DatabaseTransaction {
     async fn with<T, E, F, FUT>(mut self, f: F) -> Result<T, E>
     where

@@ -33,42 +33,6 @@
   });
   setContextClient(client);
 
-  const allIterationsStore = queryStore({
-    client: getContextClient(),
-    query: graphql(`
-      query allIterations {
-        iterations {
-          id
-          name
-        }
-      }
-    `)
-  });
-
-  function iterationUrl(iterationId: string) {
-    return `/iteration/${iterationId}`;
-  }
-
-  let iterationModalIsActive = false;
-  let newIterationName: string | null = null;
-
-  function createIteration() {
-    mutationStore({
-      client,
-      query: graphql(`
-        mutation createIteration($name: String) {
-          createIteration(input: { name: $name }) {
-            id
-            name
-          }
-        }
-      `),
-      variables: { name: newIterationName }
-    });
-    newIterationName = null;
-    iterationModalIsActive = false;
-  }
-
   const routes = [
     { name: 'Tasks', href: '/tasks' },
     { name: 'Task Schedules', href: '/task-schedules' }

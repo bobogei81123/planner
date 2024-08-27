@@ -14,8 +14,6 @@ export type Scalars = {
   Boolean: { input: boolean; output: boolean; }
   Int: { input: number; output: number; }
   Float: { input: number; output: number; }
-  /** A scalar that can represent any JSON value. */
-  JSON: { input: any; output: any; }
   /**
    * ISO 8601 calendar date without timezone.
    * Format: %Y-%m-%d
@@ -39,23 +37,10 @@ export type Scalars = {
   UUID: { input: any; output: any; }
 };
 
-export type CreateIterationInput = {
-  endDate?: InputMaybe<Scalars['NaiveDate']['input']>;
-  name?: InputMaybe<Scalars['String']['input']>;
-  startDate?: InputMaybe<Scalars['NaiveDate']['input']>;
-};
-
 export type CreateTaskInput = {
-  iteration?: InputMaybe<Scalars['UUID']['input']>;
-  plannedOn?: InputMaybe<Scalars['NaiveDate']['input']>;
-  point?: InputMaybe<Scalars['Int']['input']>;
+  cost?: InputMaybe<Scalars['Int']['input']>;
+  scheduleDate: Scalars['NaiveDate']['input'];
   title: Scalars['String']['input'];
-};
-
-export type CreateTaskScheduleInput = {
-  dateSpec: Scalars['JSON']['input'];
-  taskPoint?: InputMaybe<Scalars['Int']['input']>;
-  taskTitle: Scalars['String']['input'];
 };
 
 export type DateRange = {
@@ -63,35 +48,16 @@ export type DateRange = {
   start: Scalars['NaiveDate']['input'];
 };
 
-export type Iteration = {
-  __typename?: 'Iteration';
-  id: Scalars['UUID']['output'];
-  name: Scalars['String']['output'];
-  tasks: Array<Task>;
-};
-
 export type MutationRoot = {
   __typename?: 'MutationRoot';
-  createIteration: Iteration;
   createTask: Task;
-  createTaskSchedule: TaskSchedule;
   deleteTask: Scalars['UUID']['output'];
   updateTask: Task;
 };
 
 
-export type MutationRootCreateIterationArgs = {
-  input: CreateIterationInput;
-};
-
-
 export type MutationRootCreateTaskArgs = {
   input: CreateTaskInput;
-};
-
-
-export type MutationRootCreateTaskScheduleArgs = {
-  input: CreateTaskScheduleInput;
 };
 
 
@@ -106,15 +72,7 @@ export type MutationRootUpdateTaskArgs = {
 
 export type QueryRoot = {
   __typename?: 'QueryRoot';
-  iteration: Iteration;
-  iterations: Array<Iteration>;
-  taskSchedules: Array<TaskSchedule>;
   tasks: Array<Task>;
-};
-
-
-export type QueryRootIterationArgs = {
-  id: Scalars['UUID']['input'];
 };
 
 
@@ -124,49 +82,24 @@ export type QueryRootTasksArgs = {
 
 export type Task = {
   __typename?: 'Task';
+  completeDate?: Maybe<Scalars['NaiveDate']['output']>;
+  cost?: Maybe<Scalars['Int']['output']>;
   id: Scalars['UUID']['output'];
-  iterations: Array<Iteration>;
-  plannedOn?: Maybe<Scalars['NaiveDate']['output']>;
-  point?: Maybe<Scalars['Int']['output']>;
-  status: TaskStatus;
+  scheduleDate: Scalars['NaiveDate']['output'];
   title: Scalars['String']['output'];
 };
 
 export type TaskFilter = {
-  plannedDateRange?: InputMaybe<DateRange>;
+  scheduleDateRange?: InputMaybe<DateRange>;
 };
-
-export type TaskSchedule = {
-  __typename?: 'TaskSchedule';
-  dateSpec: Scalars['JSON']['output'];
-  id: Scalars['UUID']['output'];
-  nextDateToCheck: Scalars['NaiveDate']['output'];
-  taskPoint?: Maybe<Scalars['Int']['output']>;
-  taskTitle: Scalars['String']['output'];
-  userId: Scalars['UUID']['output'];
-};
-
-export enum TaskStatus {
-  Active = 'ACTIVE',
-  Completed = 'COMPLETED'
-}
 
 export type UpdateTaskInput = {
+  completeDate?: InputMaybe<Scalars['NaiveDate']['input']>;
+  cost?: InputMaybe<Scalars['Int']['input']>;
   id: Scalars['UUID']['input'];
-  iterations?: InputMaybe<Array<Scalars['UUID']['input']>>;
-  plannedOn?: InputMaybe<Scalars['NaiveDate']['input']>;
-  point?: InputMaybe<Scalars['Int']['input']>;
-  status?: InputMaybe<TaskStatus>;
+  scheduleDate?: InputMaybe<Scalars['NaiveDate']['input']>;
   title?: InputMaybe<Scalars['String']['input']>;
 };
-
-export type UpdateTaskStatusMutationVariables = Exact<{
-  id: Scalars['UUID']['input'];
-  status: TaskStatus;
-}>;
-
-
-export type UpdateTaskStatusMutation = { __typename?: 'MutationRoot', updateTask: { __typename?: 'Task', id: any, status: TaskStatus } };
 
 export type UpdateTaskTitleMutationVariables = Exact<{
   id: Scalars['UUID']['input'];
@@ -178,27 +111,19 @@ export type UpdateTaskTitleMutation = { __typename?: 'MutationRoot', updateTask:
 
 export type UpdateTaskPointMutationVariables = Exact<{
   id: Scalars['UUID']['input'];
-  point?: InputMaybe<Scalars['Int']['input']>;
+  cost?: InputMaybe<Scalars['Int']['input']>;
 }>;
 
 
-export type UpdateTaskPointMutation = { __typename?: 'MutationRoot', updateTask: { __typename?: 'Task', id: any, point?: number | null } };
+export type UpdateTaskPointMutation = { __typename?: 'MutationRoot', updateTask: { __typename?: 'Task', id: any, cost?: number | null } };
 
-export type UpdateTaskPlannedOnMutationVariables = Exact<{
+export type UpdateTaskScheduleDateMutationVariables = Exact<{
   id: Scalars['UUID']['input'];
-  plannedOn?: InputMaybe<Scalars['NaiveDate']['input']>;
+  scheduleDate?: InputMaybe<Scalars['NaiveDate']['input']>;
 }>;
 
 
-export type UpdateTaskPlannedOnMutation = { __typename?: 'MutationRoot', updateTask: { __typename?: 'Task', id: any, plannedOn?: any | null } };
-
-export type UpdateTaskIterationsMutationVariables = Exact<{
-  id: Scalars['UUID']['input'];
-  iterations?: InputMaybe<Array<Scalars['UUID']['input']> | Scalars['UUID']['input']>;
-}>;
-
-
-export type UpdateTaskIterationsMutation = { __typename?: 'MutationRoot', updateTask: { __typename?: 'Task', id: any, iterations: Array<{ __typename?: 'Iteration', id: any, name: string }> } };
+export type UpdateTaskScheduleDateMutation = { __typename?: 'MutationRoot', updateTask: { __typename?: 'Task', id: any, scheduleDate: any } };
 
 export type DeleteTaskMutationVariables = Exact<{
   id: Scalars['UUID']['input'];
@@ -212,49 +137,19 @@ export type CreateTaskMutationVariables = Exact<{
 }>;
 
 
-export type CreateTaskMutation = { __typename?: 'MutationRoot', createTask: { __typename?: 'Task', id: any, title: string, status: TaskStatus, point?: number | null } };
-
-export type AllIterationsQueryVariables = Exact<{ [key: string]: never; }>;
-
-
-export type AllIterationsQuery = { __typename?: 'QueryRoot', iterations: Array<{ __typename?: 'Iteration', id: any, name: string }> };
-
-export type CreateIterationMutationVariables = Exact<{
-  name?: InputMaybe<Scalars['String']['input']>;
-}>;
-
-
-export type CreateIterationMutation = { __typename?: 'MutationRoot', createIteration: { __typename?: 'Iteration', id: any, name: string } };
-
-export type AllTaskSchedulesQueryVariables = Exact<{ [key: string]: never; }>;
-
-
-export type AllTaskSchedulesQuery = { __typename?: 'QueryRoot', taskSchedules: Array<{ __typename?: 'TaskSchedule', id: any, nextDateToCheck: any, dateSpec: any, taskTitle: string, taskPoint?: number | null }> };
-
-export type CreateTaskScheduleMutationVariables = Exact<{
-  input: CreateTaskScheduleInput;
-}>;
-
-
-export type CreateTaskScheduleMutation = { __typename?: 'MutationRoot', createTaskSchedule: { __typename?: 'TaskSchedule', id: any, nextDateToCheck: any, dateSpec: any, taskTitle: string, taskPoint?: number | null } };
+export type CreateTaskMutation = { __typename?: 'MutationRoot', createTask: { __typename?: 'Task', id: any, scheduleDate: any, title: string, cost?: number | null } };
 
 export type AllTasksQueryVariables = Exact<{
   filter?: InputMaybe<TaskFilter>;
 }>;
 
 
-export type AllTasksQuery = { __typename?: 'QueryRoot', tasks: Array<{ __typename?: 'Task', id: any, title: string, status: TaskStatus, point?: number | null, plannedOn?: any | null, iterations: Array<{ __typename?: 'Iteration', id: any, name: string }> }> };
+export type AllTasksQuery = { __typename?: 'QueryRoot', tasks: Array<{ __typename?: 'Task', id: any, scheduleDate: any, title: string, cost?: number | null }> };
 
 
-export const UpdateTaskStatusDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateTaskStatus"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UUID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"status"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"TaskStatus"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateTask"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}},{"kind":"ObjectField","name":{"kind":"Name","value":"status"},"value":{"kind":"Variable","name":{"kind":"Name","value":"status"}}}]}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}}]}}]}}]} as unknown as DocumentNode<UpdateTaskStatusMutation, UpdateTaskStatusMutationVariables>;
 export const UpdateTaskTitleDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateTaskTitle"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UUID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"title"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateTask"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}},{"kind":"ObjectField","name":{"kind":"Name","value":"title"},"value":{"kind":"Variable","name":{"kind":"Name","value":"title"}}}]}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"title"}}]}}]}}]} as unknown as DocumentNode<UpdateTaskTitleMutation, UpdateTaskTitleMutationVariables>;
-export const UpdateTaskPointDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateTaskPoint"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UUID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"point"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateTask"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}},{"kind":"ObjectField","name":{"kind":"Name","value":"point"},"value":{"kind":"Variable","name":{"kind":"Name","value":"point"}}}]}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"point"}}]}}]}}]} as unknown as DocumentNode<UpdateTaskPointMutation, UpdateTaskPointMutationVariables>;
-export const UpdateTaskPlannedOnDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateTaskPlannedOn"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UUID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"plannedOn"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"NaiveDate"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateTask"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}},{"kind":"ObjectField","name":{"kind":"Name","value":"plannedOn"},"value":{"kind":"Variable","name":{"kind":"Name","value":"plannedOn"}}}]}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"plannedOn"}}]}}]}}]} as unknown as DocumentNode<UpdateTaskPlannedOnMutation, UpdateTaskPlannedOnMutationVariables>;
-export const UpdateTaskIterationsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateTaskIterations"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UUID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"iterations"}},"type":{"kind":"ListType","type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UUID"}}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateTask"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}},{"kind":"ObjectField","name":{"kind":"Name","value":"iterations"},"value":{"kind":"Variable","name":{"kind":"Name","value":"iterations"}}}]}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"iterations"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}}]}}]}}]}}]} as unknown as DocumentNode<UpdateTaskIterationsMutation, UpdateTaskIterationsMutationVariables>;
+export const UpdateTaskPointDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateTaskPoint"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UUID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"cost"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateTask"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}},{"kind":"ObjectField","name":{"kind":"Name","value":"cost"},"value":{"kind":"Variable","name":{"kind":"Name","value":"cost"}}}]}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"cost"}}]}}]}}]} as unknown as DocumentNode<UpdateTaskPointMutation, UpdateTaskPointMutationVariables>;
+export const UpdateTaskScheduleDateDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateTaskScheduleDate"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UUID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"scheduleDate"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"NaiveDate"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateTask"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}},{"kind":"ObjectField","name":{"kind":"Name","value":"scheduleDate"},"value":{"kind":"Variable","name":{"kind":"Name","value":"scheduleDate"}}}]}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"scheduleDate"}}]}}]}}]} as unknown as DocumentNode<UpdateTaskScheduleDateMutation, UpdateTaskScheduleDateMutationVariables>;
 export const DeleteTaskDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"DeleteTask"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UUID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"deleteTask"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}]}]}}]} as unknown as DocumentNode<DeleteTaskMutation, DeleteTaskMutationVariables>;
-export const CreateTaskDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CreateTask"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"CreateTaskInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"createTask"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"title"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"point"}}]}}]}}]} as unknown as DocumentNode<CreateTaskMutation, CreateTaskMutationVariables>;
-export const AllIterationsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"allIterations"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"iterations"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}}]}}]}}]} as unknown as DocumentNode<AllIterationsQuery, AllIterationsQueryVariables>;
-export const CreateIterationDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"createIteration"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"name"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"createIteration"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"name"},"value":{"kind":"Variable","name":{"kind":"Name","value":"name"}}}]}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}}]}}]}}]} as unknown as DocumentNode<CreateIterationMutation, CreateIterationMutationVariables>;
-export const AllTaskSchedulesDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"allTaskSchedules"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"taskSchedules"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"nextDateToCheck"}},{"kind":"Field","name":{"kind":"Name","value":"dateSpec"}},{"kind":"Field","name":{"kind":"Name","value":"taskTitle"}},{"kind":"Field","name":{"kind":"Name","value":"taskPoint"}}]}}]}}]} as unknown as DocumentNode<AllTaskSchedulesQuery, AllTaskSchedulesQueryVariables>;
-export const CreateTaskScheduleDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CreateTaskSchedule"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"CreateTaskScheduleInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"createTaskSchedule"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"nextDateToCheck"}},{"kind":"Field","name":{"kind":"Name","value":"dateSpec"}},{"kind":"Field","name":{"kind":"Name","value":"taskTitle"}},{"kind":"Field","name":{"kind":"Name","value":"taskPoint"}}]}}]}}]} as unknown as DocumentNode<CreateTaskScheduleMutation, CreateTaskScheduleMutationVariables>;
-export const AllTasksDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"allTasks"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"filter"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"TaskFilter"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"tasks"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"filter"},"value":{"kind":"Variable","name":{"kind":"Name","value":"filter"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"title"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"point"}},{"kind":"Field","name":{"kind":"Name","value":"plannedOn"}},{"kind":"Field","name":{"kind":"Name","value":"iterations"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}}]}}]}}]}}]} as unknown as DocumentNode<AllTasksQuery, AllTasksQueryVariables>;
+export const CreateTaskDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CreateTask"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"CreateTaskInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"createTask"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"scheduleDate"}},{"kind":"Field","name":{"kind":"Name","value":"title"}},{"kind":"Field","name":{"kind":"Name","value":"cost"}}]}}]}}]} as unknown as DocumentNode<CreateTaskMutation, CreateTaskMutationVariables>;
+export const AllTasksDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"allTasks"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"filter"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"TaskFilter"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"tasks"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"filter"},"value":{"kind":"Variable","name":{"kind":"Name","value":"filter"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"scheduleDate"}},{"kind":"Field","name":{"kind":"Name","value":"title"}},{"kind":"Field","name":{"kind":"Name","value":"cost"}}]}}]}}]} as unknown as DocumentNode<AllTasksQuery, AllTasksQueryVariables>;

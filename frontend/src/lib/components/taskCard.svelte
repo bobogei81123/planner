@@ -3,7 +3,7 @@
   import { parseDate, type DateValue } from '@internationalized/date';
 
   import { graphql } from '$src/gql';
-  import { TaskStatus, type Task } from '$src/gql/graphql';
+  import { type Task } from '$src/gql/graphql';
   import { Button } from '$lib/components/ui/button';
   import * as Select from '$lib/components/ui/select';
   import ClickToEdit from '$lib/components/taskCard/clickToEdit.svelte';
@@ -17,17 +17,10 @@
   type InputTask = {
     id: Task['id'];
     title: Task['title'];
-    status: Task['status'];
-    plannedOn?: Task['plannedOn'];
-    point: number | null;
-    iterations: { id: string; name: string }[];
-  };
-  type InputIteration = {
-    id: string;
-    name: string;
+    scheduleDate?: Task['plannedOn'];
+    cost: number | null;
   };
   export let task: InputTask;
-  export let allIterations: InputIteration[];
 
   // This stops the strange "back propogation" of reactivity in Svelte.
   // See: https://github.com/sveltejs/svelte/issues/4933
@@ -43,28 +36,28 @@
 
   let client = getContextClient();
 
-  function invertedStatus(status: TaskStatus): TaskStatus {
-    if (status === TaskStatus.Completed) {
-      return TaskStatus.Active;
-    } else {
-      return TaskStatus.Completed;
-    }
-  }
-  function toggleTaskStatus() {
-    _task.status = invertedStatus(_task.status);
-    mutationStore({
-      client,
-      query: graphql(`
-        mutation UpdateTaskStatus($id: UUID!, $status: TaskStatus!) {
-          updateTask(input: { id: $id, status: $status }) {
-            id
-            status
-          }
-        }
-      `),
-      variables: { id: taskId, status: _task.status }
-    });
-  }
+  // function invertedStatus(status: TaskStatus): TaskStatus {
+  //   if (status === TaskStatus.Completed) {
+  //     return TaskStatus.Active;
+  //   } else {
+  //     return TaskStatus.Completed;
+  //   }
+  // }
+  // function toggleTaskStatus() {
+  //   _task.status = invertedStatus(_task.status);
+  //   mutationStore({
+  //     client,
+  //     query: graphql(`
+  //       mutation UpdateTaskStatus($id: UUID!, $status: TaskStatus!) {
+  //         updateTask(input: { id: $id, status: $status }) {
+  //           id
+  //           status
+  //         }
+  //       }
+  //     `),
+  //     variables: { id: taskId, status: _task.status }
+  //   });
+  // }
 
   function updateTaskTitle(title: string) {
     mutationStore({
@@ -81,69 +74,35 @@
     });
   }
 
-  function updateTaskPoint(point: number | null) {
+  function updateTaskCost(cost: number | null) {
     mutationStore({
       client,
       query: graphql(`
-        mutation UpdateTaskPoint($id: UUID!, $point: Int) {
-          updateTask(input: { id: $id, point: $point }) {
+        mutation UpdateTaskPoint($id: UUID!, $cost: Int) {
+          updateTask(input: { id: $id, cost: $cost }) {
             id
-            point
+            cost
           }
         }
       `),
-      variables: { id: taskId, point }
+      variables: { id: taskId, cost }
     });
   }
 
-  $: plannedOnDate = _task.plannedOn != undefined ? parseDate(_task.plannedOn) : undefined;
-  function updateTaskPlannedOn(date: DateValue | undefined) {
-    _task.plannedOn = date?.toString();
+  $: scheduleDate = _task.scheduleDate != undefined ? parseDate(_task.scheduleDate) : undefined;
+  function updateTaskScheduleDate(date: DateValue | undefined) {
+    _task.scheduleDate = date?.toString();
     mutationStore({
       client,
       query: graphql(`
-        mutation UpdateTaskPlannedOn($id: UUID!, $plannedOn: NaiveDate) {
-          updateTask(input: { id: $id, plannedOn: $plannedOn }) {
+        mutation UpdateTaskScheduleDate($id: UUID!, $scheduleDate: NaiveDate) {
+          updateTask(input: { id: $id, scheduleDate: $scheduleDate }) {
             id
-            plannedOn
+            scheduleDate
           }
         }
       `),
-      variables: { id: taskId, plannedOn: _task.plannedOn }
-    });
-  }
-
-  interface UiSelectedIteration {
-    value: string | null;
-    label?: string;
-  }
-  function getUiSelectedIteration(iterations: InputIteration[]): UiSelectedIteration {
-    if (iterations.length == 0) {
-      return { value: null, label: '<None>' };
-    }
-    return { value: iterations[0].id, label: iterations[0].name };
-  }
-  $: uiSelectedIteration = getUiSelectedIteration(_task.iterations);
-  function updateTaskIteration(uiIteration: UiSelectedIteration | undefined) {
-    if (uiIteration == undefined) {
-      return;
-    }
-    _task.iterations =
-      uiIteration.value == null ? [] : [{ id: uiIteration.value, name: uiIteration.label! }];
-    mutationStore({
-      client,
-      query: graphql(`
-        mutation UpdateTaskIterations($id: UUID!, $iterations: [UUID!]) {
-          updateTask(input: { id: $id, iterations: $iterations }) {
-            id
-            iterations {
-              id
-              name
-            }
-          }
-        }
-      `),
-      variables: { id: taskId, iterations: _task.iterations.map((it) => it.id) }
+      variables: { id: taskId, scheduleDate: _task.scheduleDate }
     });
   }
 
@@ -164,10 +123,7 @@
   <Collapsible.Root>
     <div class="flex items-center w-full h-20 relative group">
       <div class="ml-5 mr-3">
-        <CircleCheckButton
-          checked={_task.status === TaskStatus.Completed}
-          on:click={toggleTaskStatus}
-        />
+        <CircleCheckButton checked={false} />
       </div>
       <div class="font-sans flex-grow">
         <ClickToEdit
@@ -178,8 +134,8 @@
       <div class="mr-3 flex justify-center items-center">
         <div class="h-10 w-10 rounded bg-gray-500">
           <ClickToEditNumber
-            bind:value={_task.point}
-            on:changeSubmit={({ detail: newPoint }) => updateTaskPoint(newPoint)}
+            bind:value={_task.cost}
+            on:changeSubmit={({ detail: newPoint }) => updateTaskCost(newPoint)}
           />
         </div>
       </div>
@@ -191,27 +147,15 @@
     <Collapsible.Content>
       <div class="px-4 py-2 grid grid-cols-2 gap-6">
         <div>
-          <Label class="text-md" for={`${taskId}-date-selector`}><b>Planned On</b></Label>
+          <Label class="text-md" for={`${taskId}-date-selector`}><b>Schedule Date</b></Label>
           <DateSelector
-            bind:value={plannedOnDate}
-            onValueChange={updateTaskPlannedOn}
+            bind:value={scheduleDate}
+            onValueChange={updateTaskScheduleDate}
             calendarLabel={`${taskId}-date-selector`}
             initialFocus
           />
         </div>
         <div>
-          <Label class="text-md"><b>Iteration</b></Label>
-          <Select.Root onSelectedChange={updateTaskIteration} bind:selected={uiSelectedIteration}>
-            <Select.Trigger class="w-full">
-              <Select.Value placeholder="Select an iteration" />
-            </Select.Trigger>
-            <Select.Content>
-              <Select.Item value={null} label="<None>">{'<None>'}</Select.Item>
-              {#each allIterations as item}
-                <Select.Item value={item.id} label={item.name}>{item.name}</Select.Item>
-              {/each}
-            </Select.Content>
-          </Select.Root>
         </div>
       </div>
       <div class="flex justify-end px-4 py-2 mb-2">

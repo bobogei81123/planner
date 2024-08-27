@@ -1,4 +1,4 @@
 #!/bin/bash
 
-atlas schema diff --from "file://migrations?format=golang-migrate" \
+npx @ariga/atlas schema diff --from "file://migrations?format=golang-migrate" \
   --to "file://schema.sql" --dev-url "docker://postgres/15/dev"

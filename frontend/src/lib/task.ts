@@ -4,9 +4,9 @@ export const CREATE_TASK = graphql(`
   mutation CreateTask($input: CreateTaskInput!) {
     createTask(input: $input) {
       id
+      scheduleDate
       title
-      status
-      point
+      cost
     }
   }
 `);

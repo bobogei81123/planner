@@ -1,10 +1,9 @@
-use std::net::{SocketAddr, TcpListener};
-
-use axum::Server;
+use std::net::SocketAddr;
 
 use planner_backend::build_app;
 use reqwest::RequestBuilder;
 use sea_orm::DatabaseConnection;
+use tokio::net::TcpListener;
 
 pub type Result<T> = anyhow::Result<T>;
 
@@ -16,13 +15,14 @@ pub struct TestServer {
 impl TestServer {
     pub async fn spawn(db_conn: DatabaseConnection) -> Self {
         let router = build_app(db_conn).await;
-        let listener =
-            TcpListener::bind("127.0.0.1:0").expect("Cannot bind to 127.0.0.1:0 (dynamic port)");
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("Cannot bind to 127.0.0.1:0 (dynamic port)");
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async {
-            Server::from_tcp(listener)
-                .expect("Cannot create Axum server from listener")
-                .serve(router.into_make_service())
+            axum::serve(listener, router.into_make_service())
+                // .expect("Cannot create Axum server from listener")
+                // .serve(router.into_make_service())
                 .await
                 .expect("Server failed");
         });

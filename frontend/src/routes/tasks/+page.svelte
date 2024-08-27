@@ -40,7 +40,7 @@
     }
 
     return {
-      plannedDateRange: {
+      scheduleDateRange: {
         start: formatISODate(selectedWeek!.startDate()),
         end: formatISODate(selectedWeek!.endDate())
       }
@@ -53,14 +53,9 @@
       query allTasks($filter: TaskFilter) {
         tasks(filter: $filter) {
           id
+          scheduleDate
           title
-          status
-          point
-          plannedOn
-          iterations {
-            id
-            name
-          }
+          cost
         }
       }
     `),
@@ -98,18 +93,6 @@
       return 0;
     }
   }
-
-  const allIterationsStore = queryStore({
-    client,
-    query: graphql(`
-      query allIterations {
-        iterations {
-          id
-          name
-        }
-      }
-    `)
-  });
 </script>
 
 <div class="flex flex-col mt-5 w-2/5">
@@ -158,11 +141,9 @@
     {:else if $allTasksStore.error}
       <p>On no... {$allTasksStore.error.message}</p>
     {:else}
-      {@const iterations =
-        $allIterationsStore.data != null ? $allIterationsStore.data.iterations : []}
       {#each tasks as task, i (task.id)}
         <div class:mt-3={i > 0}>
-          <TaskCard {task} allIterations={iterations} />
+          <TaskCard {task}/>
         </div>
       {/each}
     {/if}

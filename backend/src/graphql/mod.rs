@@ -1,8 +1,14 @@
-use std::{fmt::Display, sync::Arc, time::Duration};
+use std::fmt::Display;
 
+use crate::{
+    app::{maybe::Maybe, task::ViewType, time::EpochLike},
+    auth::Claims,
+    entities,
+    utils::OptionExt as _,
+};
 use async_graphql::{
-    dataloader::DataLoader, http::GraphiQLSource, Context, EmptySubscription, ErrorExtensions,
-    Json, MaybeUndefined, Object, Schema,
+    http::GraphiQLSource, Context, EmptySubscription, ErrorExtensions, InputObject, MaybeUndefined,
+    Object, Schema, SimpleObject,
 };
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use axum::{
@@ -11,34 +17,15 @@ use axum::{
     routing, Router,
 };
 use chrono::NaiveDate;
-use sea_orm::{ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
-use crate::{auth::Claims, entities};
-
-use self::{
-    iteration::{list_iterations, Iteration, IterationId},
-    task::{create_task, delete_task, list_tasks, update_task, Task, TaskId, TaskStatus},
-    task_schedule::{
-        create_task_schedule, list_task_schedules, random_task_schedule, DateSpec, TaskSchedule,
-    },
-};
-
-mod iteration;
-mod loader;
-mod task;
-pub(crate) mod task_schedule;
+use crate::app;
 
 pub fn routes(db_conn: DatabaseConnection) -> Router {
     let schema: AppSchema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
         .extension(async_graphql::extensions::Logger)
         .data(db_conn.clone())
-        .data(DataLoader::new(
-            PgLoader {
-                db_conn: db_conn.clone(),
-            },
-            tokio::spawn,
-        ))
         .finish();
     let app_state = AppState { db_conn, schema };
 
@@ -51,6 +38,147 @@ pub(crate) type AppSchema = async_graphql::Schema<QueryRoot, MutationRoot, Empty
 
 pub(crate) struct QueryRoot;
 
+#[derive(Debug, thiserror::Error)]
+enum Error {
+    #[error("Bad request: {0}")]
+    BadRequest(BadRequestReason),
+    #[error("Internal error: {0}")]
+    Internal(#[from] anyhow::Error),
+}
+
+impl Error {
+    fn invalid_date_range(date_range: DateRange) -> Self {
+        Self::BadRequest(BadRequestReason::InvalidDateRange(date_range))
+    }
+
+    fn required_field_is_null(field: String) -> Self {
+        Error::BadRequest(BadRequestReason::RequiredFieldIsNull { field })
+    }
+}
+
+#[derive(Debug)]
+enum BadRequestReason {
+    InvalidDateRange(DateRange),
+    RequiredFieldIsNull { field: String },
+}
+
+impl Display for BadRequestReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidDateRange(date_range) => {
+                write!(f, "the date range {date_range:?} is not valid")
+            }
+            Self::RequiredFieldIsNull { field } => {
+                write!(f, "field `{field}` is a required field, but set to null")
+            }
+        }
+    }
+}
+
+#[derive(Debug, InputObject)]
+struct DateRange {
+    start: NaiveDate,
+    end: NaiveDate,
+}
+
+impl TryFrom<DateRange> for app::time::DateRange {
+    type Error = Error;
+
+    fn try_from(value: DateRange) -> Result<Self, Self::Error> {
+        if value.start > value.end {
+            return Err(Error::invalid_date_range(value));
+        }
+        Ok(app::time::DateRange::new(value.start, value.end))
+    }
+}
+
+#[derive(SimpleObject, InputObject)]
+#[graphql(input_name = "InputEpoch")]
+struct Epoch {
+    type_: EpochType,
+    date: NaiveDate,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, async_graphql::Enum)]
+enum EpochType {
+    Date,
+    Week,
+}
+
+impl From<Epoch> for app::time::Epoch {
+    fn from(value: Epoch) -> Self {
+        match value.type_ {
+            EpochType::Date => app::time::Epoch::Date(value.date),
+            EpochType::Week => app::time::Epoch::Week(app::time::Week::from_start_date(value.date)),
+        }
+    }
+}
+
+impl From<app::time::Epoch> for Epoch {
+    fn from(value: app::time::Epoch) -> Self {
+        match value {
+            app::time::Epoch::Date(date) => Epoch {
+                type_: EpochType::Date,
+                date,
+            },
+            app::time::Epoch::Week(week) => Epoch {
+                type_: EpochType::Week,
+                date: week.start_date(),
+            },
+        }
+    }
+}
+
+#[derive(InputObject)]
+struct TaskFilter {
+    view_filter: Option<ViewFilter>,
+}
+
+#[derive(InputObject)]
+struct ViewFilter {
+    type_: ViewType,
+    epoch: Option<Epoch>,
+}
+
+impl From<TaskFilter> for app::task::TaskFilter {
+    fn from(value: TaskFilter) -> Self {
+        app::task::TaskFilter {
+            view_filter: value.view_filter.map(app::task::ViewFilter::from),
+        }
+    }
+}
+
+impl From<ViewFilter> for app::task::ViewFilter {
+    fn from(value: ViewFilter) -> Self {
+        app::task::ViewFilter {
+            view_type: value.type_,
+            epoch: value.epoch.map(app::time::Epoch::from),
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+struct Task {
+    id: Uuid,
+    scheduled_on: Option<Epoch>,
+    is_completed: bool,
+    title: String,
+    cost: Option<i32>,
+}
+
+impl From<app::task::Task> for Task {
+    fn from(value: app::task::Task) -> Self {
+        let is_completed = value.is_completed();
+        Self {
+            id: value.id,
+            scheduled_on: value.scheduled_on.map(From::from),
+            is_completed,
+            title: value.title,
+            cost: value.cost,
+        }
+    }
+}
+
 #[Object]
 impl QueryRoot {
     async fn tasks(
@@ -58,218 +186,105 @@ impl QueryRoot {
         ctx: &Context<'_>,
         filter: Option<TaskFilter>,
     ) -> async_graphql::Result<Vec<Task>> {
-        list_tasks(ctx.user()?.id, filter.unwrap_or_default(), ctx.db_conn())
-            .await
-            .map_err(|e| e.extend())
-    }
-
-    async fn iterations(&self, ctx: &Context<'_>) -> async_graphql::Result<Vec<Iteration>> {
-        list_iterations(ctx.user()?.id, ctx.db_conn())
-            .await
-            .map_err(|e| e.extend())
-    }
-
-    async fn iteration(&self, ctx: &Context<'_>, id: Uuid) -> async_graphql::Result<Iteration> {
-        let loader = ctx.data_unchecked::<DataLoader<PgLoader>>();
-        let iteration = loader
-            .load_one(IterationId(id))
-            .await?
-            .ok_or(AppError::ResourceNotFound(id))?;
-
-        Ok(iteration)
-    }
-
-    async fn task_schedules(&self, ctx: &Context<'_>) -> async_graphql::Result<Vec<TaskSchedule>> {
-        // Ok(vec![random_task_schedule()])
-        list_task_schedules(ctx.user()?.id, ctx.db_conn())
-            .await
-            .map_err(|e| e.extend())
+        Ok(app::task::list_tasks(
+            ctx.user()?.id,
+            filter.try_map(TryInto::try_into)?.unwrap_or_default(),
+            ctx.db_conn(),
+        )
+        .await?
+        .into_iter()
+        .map(Task::from)
+        .collect::<Vec<_>>())
     }
 }
 
-#[derive(Default, async_graphql::InputObject)]
-struct TaskFilter {
-    planned_date_range: Option<DateRange>,
+#[derive(InputObject)]
+struct CreateTaskInput {
+    scheduled_on: Option<Epoch>,
+    title: String,
+    cost: Option<i32>,
 }
 
-#[derive(async_graphql::InputObject)]
-struct DateRange {
-    start: NaiveDate,
-    end: NaiveDate,
+impl From<CreateTaskInput> for app::task::CreateTaskInput {
+    fn from(value: CreateTaskInput) -> Self {
+        app::task::CreateTaskInput {
+            scheduled_on: value.scheduled_on.map(From::from),
+            title: value.title,
+            cost: value.cost,
+        }
+    }
+}
+
+#[derive(InputObject)]
+struct UpdateTaskInput {
+    id: Uuid,
+    scheduled_on: MaybeUndefined<Epoch>,
+    complete_date: MaybeUndefined<NaiveDate>,
+    title: MaybeUndefined<String>,
+    cost: MaybeUndefined<i32>,
+}
+
+impl TryFrom<UpdateTaskInput> for app::task::UpdateTaskInput {
+    type Error = Error;
+
+    fn try_from(value: UpdateTaskInput) -> Result<Self, Self::Error> {
+        Ok(app::task::UpdateTaskInput {
+            id: value.id,
+            scheduled_on: into_maybe(value.scheduled_on.map_value(From::from)),
+            complete_date: into_maybe(value.complete_date),
+            title: into_maybe_nonnull(value.title)
+                .ok_or_else(|| Error::required_field_is_null("title".to_owned()))?,
+            cost: into_maybe(value.cost),
+        })
+    }
+}
+
+fn into_maybe<T>(value: MaybeUndefined<T>) -> Maybe<Option<T>> {
+    match value {
+        MaybeUndefined::Value(x) => Maybe::Some(Some(x)),
+        MaybeUndefined::Null => Maybe::Some(None),
+        MaybeUndefined::Undefined => Maybe::Undefined,
+    }
+}
+
+fn into_maybe_nonnull<T>(value: MaybeUndefined<T>) -> Option<Maybe<T>> {
+    match value {
+        MaybeUndefined::Value(x) => Some(Maybe::Some(x)),
+        MaybeUndefined::Null => None,
+        MaybeUndefined::Undefined => Some(Maybe::Undefined),
+    }
 }
 
 pub(crate) struct MutationRoot;
 #[Object]
 impl MutationRoot {
-    async fn update_task(
-        &self,
-        ctx: &Context<'_>,
-        input: UpdateTaskInput,
-    ) -> async_graphql::Result<Task> {
-        Ok(update_task(ctx.user()?.id, input, ctx.db_conn()).await?)
-    }
-
     async fn create_task(
         &self,
         ctx: &Context<'_>,
         input: CreateTaskInput,
     ) -> async_graphql::Result<Task> {
-        Ok(create_task(ctx.user()?.id, input, ctx.db_conn()).await?)
+        Ok(
+            app::task::create_task(ctx.user()?.id, input.into(), ctx.db_conn())
+                .await?
+                .into(),
+        )
     }
 
-    async fn delete_task(&self, ctx: &Context<'_>, id: TaskId) -> async_graphql::Result<TaskId> {
-        delete_task(ctx.user()?.id, id, ctx.db_conn()).await?;
-        Ok(id)
-    }
-
-    async fn create_iteration(
-        &self,
-        _ctx: &Context<'_>,
-        _input: CreateIterationInput,
-    ) -> async_graphql::Result<Iteration> {
-        todo!("Decide if we should implement iteration feature at all")
-        // let date_range: Option<PgRange<NaiveDate>> = match (input.start_date, input.end_date) {
-        //     (None, None) => None,
-        //     (Some(start_date), Some(end_date)) => Some(PgRange {
-        //         start: Bound::Included(start_date),
-        //         end: Bound::Included(end_date),
-        //     }),
-        //     (Some(_), None) | (None, Some(_)) => {
-        //         return Err(AppError::BadRequest(BadRequestReason::InvalidDateRange))?
-        //     }
-        // };
-        // let name = input.name.unwrap_or_else(|| "New Iteration".to_string());
-        //
-        // let id = Uuid::new_v4();
-        // let db_conn = ctx.data_unchecked::<PgPool>();
-        // let row_affected = sqlx::query(
-        //     r#"INSERT INTO iterations (id, user_id, name, date_range)
-        //        VALUES ($1, $2, $3, $4)"#,
-        // )
-        // .bind(id)
-        // .bind(Uuid::new_v4())
-        // .bind(&name)
-        // .bind(&date_range)
-        // .execute(db_conn)
-        // .await?
-        // .rows_affected();
-        //
-        // if row_affected != 1 {
-        //     return Err(anyhow!("Failed to insert a new iteration"))?;
-        // }
-        //
-        // let iteration = ctx
-        //     .data_unchecked::<DataLoader<PgLoader>>()
-        //     .load_one(IterationId(id))
-        //     .await?
-        //     .ok_or_else(|| AppError::ResourceNotFound(id))?;
-        //
-        // Ok(iteration)
-    }
-
-    async fn create_task_schedule(
+    async fn update_task(
         &self,
         ctx: &Context<'_>,
-        input: CreateTaskScheduleInput,
-    ) -> async_graphql::Result<TaskSchedule> {
-        Ok(create_task_schedule(ctx.user()?.id, input, ctx.db_conn()).await?)
+        input: UpdateTaskInput,
+    ) -> async_graphql::Result<Task> {
+        Ok(
+            app::task::update_task(ctx.user()?.id, input.try_into()?, ctx.db_conn())
+                .await?
+                .into(),
+        )
     }
-}
 
-#[derive(async_graphql::InputObject, Default)]
-struct UpdateTaskInput {
-    id: Uuid,
-    title: MaybeUndefined<String>,
-    status: MaybeUndefined<TaskStatus>,
-    point: MaybeUndefined<i32>,
-    iterations: MaybeUndefined<Vec<Uuid>>,
-    planned_on: MaybeUndefined<NaiveDate>,
-}
-
-#[derive(async_graphql::InputObject)]
-struct CreateTaskInput {
-    title: String,
-    iteration: Option<Uuid>,
-    point: Option<i32>,
-    planned_on: Option<NaiveDate>,
-}
-
-#[derive(async_graphql::InputObject)]
-struct CreateIterationInput {
-    name: Option<String>,
-    start_date: Option<NaiveDate>,
-    end_date: Option<NaiveDate>,
-}
-
-#[derive(async_graphql::InputObject)]
-struct CreateTaskScheduleInput {
-    date_spec: Json<DateSpec>,
-    task_title: String,
-    task_point: Option<i32>,
-}
-
-pub(crate) type AppResult<T> = Result<T, AppError>;
-type DbResult<T> = Result<T, DbErr>;
-
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum AppError {
-    #[error("The resource with id = {0} is not found")]
-    ResourceNotFound(Uuid),
-    #[error("The request is invalid: {0}")]
-    BadRequest(BadRequestReason),
-    #[error("User is not authorized")]
-    Unauthorized,
-    #[error("Internal error: {0}")]
-    Internal(#[from] anyhow::Error),
-}
-
-#[derive(Debug)]
-pub(crate) enum BadRequestReason {
-    InvalidDateRange,
-    InvalidTaskScheduleSpec,
-}
-
-impl Display for BadRequestReason {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BadRequestReason::InvalidDateRange => write!(
-                f,
-                "The date range is not valid. \
-                 Start date or end date must be given if the other is, \
-                 and the end date must be later than the start date."
-            ),
-            BadRequestReason::InvalidTaskScheduleSpec => {
-                write!(f, "The task schedule date spec JSON is not valid.")
-            }
-        }
-    }
-}
-
-impl From<DbErr> for AppError {
-    fn from(value: sea_orm::DbErr) -> Self {
-        AppError::Internal(value.into())
-    }
-}
-
-impl From<Arc<DbErr>> for AppError {
-    fn from(value: Arc<sea_orm::DbErr>) -> Self {
-        AppError::Internal(value.into())
-    }
-}
-
-impl ErrorExtensions for AppError {
-    fn extend(&self) -> async_graphql::Error {
-        async_graphql::Error::new(self.to_string()).extend_with(|_, e| {
-            use AppError::*;
-            match self {
-                ResourceNotFound(..) => e.set("code", "NOT_FOUND"),
-                BadRequest(..) => e.set("code", "BAD_REQUEST"),
-                Unauthorized => e.set("code", "FORBIDDEN"),
-                Internal(..) => {
-                    e.set("code", "INTERNAL_SERVER_ERROR");
-                }
-            }
-        })
+    async fn delete_task(&self, ctx: &Context<'_>, id: Uuid) -> async_graphql::Result<Uuid> {
+        app::task::delete_task(ctx.user()?.id, id, ctx.db_conn()).await?;
+        Ok(id)
     }
 }
 
@@ -322,8 +337,7 @@ impl Claims {
 #[extend::ext]
 impl Context<'_> {
     fn user(&self) -> async_graphql::Result<&User> {
-        self.data::<User>()
-            .map_err(|_| AppError::Unauthorized.extend())
+        self.data::<User>().map_err(|_| UnauthorizedError.extend())
     }
 
     fn db_conn(&self) -> &DatabaseConnection {
@@ -331,7 +345,21 @@ impl Context<'_> {
     }
 }
 
-// TODO: Check user authorization when loading data
-struct PgLoader {
-    db_conn: DatabaseConnection,
+#[derive(Debug)]
+struct UnauthorizedError;
+
+impl Display for UnauthorizedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "User is not authorized")
+    }
+}
+
+impl std::error::Error for UnauthorizedError {}
+
+impl ErrorExtensions for UnauthorizedError {
+    fn extend(&self) -> async_graphql::Error {
+        async_graphql::Error::new(self.to_string()).extend_with(|_, e| {
+            e.set("code", "UNAUTHORIZED");
+        })
+    }
 }

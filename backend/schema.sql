@@ -3,39 +3,16 @@ CREATE TABLE users (
   username varchar(50) UNIQUE NOT NULL
 );
 
-CREATE TABLE iterations (
+CREATE TABLE task (
   id uuid PRIMARY KEY,
   user_id uuid NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  name varchar NOT NULL
-);
-
-CREATE TYPE task_status AS ENUM ('active', 'completed');
-
-CREATE TABLE tasks (
-  id uuid PRIMARY KEY,
-  user_id uuid NOT NULL,
+  recurring_spec json,
+  scheduled_on json,
+  schedule_index_date date,
+  complete_date date,
+  parent_id uuid,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   title varchar NOT NULL,
-  status task_status NOT NULL,
-  point integer,
-  planned_on date
+  cost integer
 );
-
-CREATE TABLE iterations_tasks (
-  iteration_id uuid NOT NULL,
-  FOREIGN KEY (iteration_id) REFERENCES iterations(id) ON DELETE CASCADE,
-  task_id uuid UNIQUE NOT NULL,
-  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
-  PRIMARY KEY (iteration_id, task_id)
-);
-
-CREATE TABLE task_schedule (
-  id uuid PRIMARY KEY,
-  user_id uuid NOT NULL,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  date_spec json NOT NULL,
-  next_date_to_check date NOT NULL,
-  task_title varchar NOT NULL,
-  task_point integer
-)

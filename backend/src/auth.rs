@@ -1,13 +1,13 @@
 use std::sync::OnceLock;
 
-use async_trait::async_trait;
 use axum::{
+    async_trait,
     extract::FromRequestParts,
-    headers::{authorization::Bearer, Authorization},
     http::{request, StatusCode},
     response::IntoResponse,
-    routing, Json, RequestPartsExt, Router, TypedHeader,
+    routing, Json, RequestPartsExt, Router,
 };
+use axum_extra::{headers::{authorization::Bearer, Authorization}, TypedHeader};
 use jsonwebtoken::{DecodingKey, EncodingKey};
 use serde::{Deserialize, Serialize};
 

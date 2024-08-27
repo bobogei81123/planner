@@ -1,0 +1,88 @@
+schema {
+  query: QueryRoot
+  mutation: MutationRoot
+}
+
+input CreateTaskInput {
+  cost: Int
+  scheduledOn: InputEpoch
+  title: String!
+}
+
+type Epoch {
+  date: NaiveDate!
+  type: EpochType!
+}
+
+enum EpochType {
+  DATE
+  WEEK
+}
+
+input InputEpoch {
+  date: NaiveDate!
+  type: EpochType!
+}
+
+type MutationRoot {
+  createTask(input: CreateTaskInput!): Task!
+  deleteTask(id: UUID!): UUID!
+  updateTask(input: UpdateTaskInput!): Task!
+}
+
+"""
+ISO 8601 calendar date without timezone.
+Format: %Y-%m-%d
+
+# Examples
+
+* `1994-11-13`
+* `2000-02-24`
+"""
+scalar NaiveDate
+
+type QueryRoot {
+  tasks(filter: TaskFilter): [Task!]!
+}
+
+type Task {
+  cost: Int
+  id: UUID!
+  isCompleted: Boolean!
+  scheduledOn: Epoch
+  title: String!
+}
+
+input TaskFilter {
+  viewFilter: ViewFilter
+}
+
+"""
+A UUID is a unique 128-bit number, stored as 16 octets. UUIDs are parsed as
+Strings within GraphQL. UUIDs are used to assign unique identifiers to
+entities without requiring a central allocating authority.
+
+# References
+
+* [Wikipedia: Universally Unique Identifier](http://en.wikipedia.org/wiki/Universally_unique_identifier)
+* [RFC4122: A Universally Unique IDentifier (UUID) URN Namespace](http://tools.ietf.org/html/rfc4122)
+"""
+scalar UUID
+
+input UpdateTaskInput {
+  completeDate: NaiveDate
+  cost: Int
+  id: UUID!
+  scheduledOn: InputEpoch
+  title: String
+}
+
+input ViewFilter {
+  epoch: InputEpoch
+  type: ViewType!
+}
+
+enum ViewType {
+  PLANNED
+  SCHEDULED
+}

@@ -10,3 +10,5 @@ DOCKERFILE
 /frontend/build
 /frontend/node_modules
 
+/frontend-react/build
+/frontend-react/dist

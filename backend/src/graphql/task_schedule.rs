@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context};
 use async_graphql::ComplexObject;
 use chrono::{Datelike, Duration, NaiveDate, Weekday};
+use serde::{Deserialize, Serialize};
 
 #[cfg(not(test))]
 use chrono::Local;
@@ -34,154 +35,112 @@ use super::{
 )]
 pub(crate) struct TaskScheduleId(pub Uuid);
 
-#[derive(Clone, Debug, async_graphql::SimpleObject, serde::Deserialize)]
+#[derive(Clone, Debug, async_graphql::SimpleObject, Deserialize)]
 #[graphql(complex)]
-pub(crate) struct TaskSchedule {
+pub(crate) struct Plan {
     id: Uuid,
     user_id: Uuid,
     #[graphql(skip)]
-    date_spec: DateSpec,
-    next_date_to_check: NaiveDate,
-    task_title: String,
-    task_point: Option<i32>,
+    schedule: Schedule,
+    title: String,
+    cost: Option<i32>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[non_exhaustive]
+enum Schedule {
+    Once(OnceSchedule),
+    Recurring(Recurring),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+enum OnceSchedule {
+    OnDate(NaiveDate),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[non_exhaustive]
+enum Recurring {
+    // RepeatsDaily(DailySpec),
+    Weekly(RecurringWeekly),
+    // RepeatsMonthly(MonthlySpec),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct RecurringWeekly {
+    start_date: NaiveDate,
+    every_n_week: u32,
 }
 
 #[ComplexObject]
-impl TaskSchedule {
-    async fn date_spec(&self) -> async_graphql::Json<DateSpec> {
-        async_graphql::Json(self.date_spec.clone())
+impl Plan {
+    async fn schedule(&self) -> async_graphql::Json<Schedule> {
+        async_graphql::Json(self.schedule.clone())
     }
 }
 
-pub(super) fn random_task_schedule() -> TaskSchedule {
-    TaskSchedule {
-        id: Uuid::new_v4(),
-        user_id: Uuid::new_v4(),
-        date_spec: DateSpec::RepeatsWeekly(WeeklySpec {
-            start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
-            week_days: vec![Weekday::Mon, Weekday::Tue],
-            every_n_week: 1,
-        }),
-        next_date_to_check: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
-        task_title: String::new(),
-        task_point: None,
-    }
+pub(super) fn random_task_schedule() -> Plan {
+    // TaskSchedule {
+    //     id: Uuid::new_v4(),
+    //     user_id: Uuid::new_v4(),
+    //     date_spec: DateSpec::RepeatsWeekly(RecurringWeekly {
+    //         start_date: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
+    //         week_days: vec![Weekday::Mon, Weekday::Tue],
+    //         every_n_week: 1,
+    //     }),
+    //     next_date_to_check: NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
+    //     task_title: String::new(),
+    //     task_point: None,
+    // }
+
+    todo!()
 }
 
-impl TaskSchedule {
-    pub(crate) async fn schedule_until(
-        &mut self,
-        end_date: NaiveDate,
-        tx: &DatabaseTransaction,
-    ) -> AppResult<()> {
-        for date in self
-            .next_date_to_check
-            .iter_days()
-            .take_while(|d| *d < end_date)
-        {
-            if self.date_spec.should_schedule(date) {
-                create_task_in_transaction(
-                    self.user_id,
-                    CreateTaskInput {
-                        title: self.task_title.clone(),
-                        planned_on: Some(date),
-                        point: self.task_point,
-                        iteration: None,
-                    },
-                    tx,
-                )
-                .await?;
-            }
-        }
-        Ok(())
-    }
+impl Plan {
+    
 }
 
-impl TryFrom<entities::task_schedule::Model> for TaskSchedule {
+impl TryFrom<entities::task_schedule::Model> for Plan {
     type Error = anyhow::Error;
 
     fn try_from(value: entities::task_schedule::Model) -> Result<Self, Self::Error> {
-        Ok(Self {
-            id: value.id,
-            user_id: value.user_id,
-            date_spec: serde_json::from_value(value.date_spec)
-                .context("failed to parse date spec into internal representation")?,
-            next_date_to_check: value.next_date_to_check,
-            task_title: value.task_title,
-            task_point: value.task_point,
-        })
+        todo!()
+        // Ok(Self {
+        //     id: value.id,
+        //     user_id: value.user_id,
+        //     date_spec: serde_json::from_value(value.date_spec)
+        //         .context("failed to parse date spec into internal representation")?,
+        //     next_date_to_check: value.next_date_to_check,
+        //     task_title: value.task_title,
+        //     task_point: value.task_point,
+        // })
     }
 }
 
-impl TryFrom<TaskSchedule> for entities::task_schedule::Model {
+impl TryFrom<Plan> for entities::task_schedule::Model {
     type Error = anyhow::Error;
 
-    fn try_from(value: TaskSchedule) -> Result<Self, Self::Error> {
-        Ok(Self {
-            id: value.id,
-            user_id: value.user_id,
-            date_spec: serde_json::to_value(value.date_spec)
-                .context("bug: failed to convert date spec into JSON object.")?,
-            next_date_to_check: value.next_date_to_check,
-            task_title: value.task_title,
-            task_point: value.task_point,
-        })
+    fn try_from(value: Plan) -> Result<Self, Self::Error> {
+        todo!()
+        // Ok(Self {
+        //     id: value.id,
+        //     user_id: value.user_id,
+        //     date_spec: serde_json::to_value(value.date_spec)
+        //         .context("bug: failed to convert date spec into JSON object.")?,
+        //     next_date_to_check: value.next_date_to_check,
+        //     task_title: value.task_title,
+        //     task_point: value.task_point,
+        // })
     }
 
     // fn try_from(value: entities::task_schedule::Model) -> Result<Self, Self::Error> {
     // }
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub(super) enum DateSpec {
-    // RepeatsDaily(DailySpec),
-    RepeatsWeekly(WeeklySpec),
-    // RepeatsMonthly(MonthlySpec),
-}
-
-impl DateSpec {
-    fn should_schedule(&self, date: NaiveDate) -> bool {
-        match self {
-            DateSpec::RepeatsWeekly(spec) => spec.should_schedule(date),
-        }
-    }
-}
-
-trait ScheduleSpec {
-    fn should_schedule(&self, date: NaiveDate) -> bool;
-}
-
-// #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-// struct DailySpec {
-//     start_date: NaiveDate,
-// }
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub(super) struct WeeklySpec {
-    week_days: Vec<Weekday>,
-    start_date: NaiveDate,
-    every_n_week: u32,
-}
-
-impl ScheduleSpec for WeeklySpec {
-    fn should_schedule(&self, date: NaiveDate) -> bool {
-        fn first_date_in_same_week(date: NaiveDate) -> NaiveDate {
-            date.week(Weekday::Mon).first_day()
-        }
-        return self.start_date <= date
-            && self.week_days.contains(&date.weekday())
-            && (first_date_in_same_week(date) - first_date_in_same_week(self.start_date))
-                .num_weeks()
-                % self.every_n_week as i64
-                == 0;
-    }
-}
-
 pub(super) async fn list_task_schedules(
     user_id: Uuid,
     db_conn: &DatabaseConnection,
-) -> AppResult<Vec<TaskSchedule>> {
+) -> AppResult<Vec<Plan>> {
     Ok(entities::task_schedule::Entity::find()
         .filter(entities::task_schedule::Column::UserId.eq(user_id))
         .all(db_conn)
@@ -195,13 +154,13 @@ pub(super) async fn create_task_schedule(
     user_id: Uuid,
     input: CreateTaskScheduleInput,
     db_conn: &DatabaseConnection,
-) -> AppResult<TaskSchedule> {
+) -> AppResult<Plan> {
     let tx = db_conn.begin().await?;
 
     tx.with(move |tx| async move {
         let tx = tx.as_ref();
         let now = Local::now();
-        let mut task_schedule = TaskSchedule {
+        let mut task_schedule = Plan {
             id: Uuid::new_v4(),
             user_id,
             date_spec: input.date_spec.0,
@@ -261,7 +220,7 @@ mod tests {
         create_task_schedule(
             DEFAULT_USER_UUID,
             CreateTaskScheduleInput {
-                date_spec: Json(DateSpec::RepeatsWeekly(WeeklySpec {
+                date_spec: Json(DateSpec::RepeatsWeekly(RecurringWeekly {
                     week_days: vec![Weekday::Mon, Weekday::Tue],
                     start_date: NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(), // Monday
                     every_n_week: 1,
@@ -275,7 +234,7 @@ mod tests {
         create_task_schedule(
             DEFAULT_USER_UUID,
             CreateTaskScheduleInput {
-                date_spec: Json(DateSpec::RepeatsWeekly(WeeklySpec {
+                date_spec: Json(DateSpec::RepeatsWeekly(RecurringWeekly {
                     week_days: vec![Weekday::Mon, Weekday::Sun],
                     start_date: NaiveDate::from_ymd_opt(2024, 1, 5).unwrap(), // Monday
                     every_n_week: 2,
@@ -291,9 +250,9 @@ mod tests {
         expect_that!(
             task_schedules,
             unordered_elements_are![
-                pat!(TaskSchedule {
+                pat!(Plan {
                     user_id: eq(DEFAULT_USER_UUID),
-                    date_spec: pat!(DateSpec::RepeatsWeekly(pat!(WeeklySpec {
+                    date_spec: pat!(DateSpec::RepeatsWeekly(pat!(RecurringWeekly {
                         week_days: unordered_elements_are![eq(Weekday::Mon), eq(Weekday::Tue)],
                         start_date: eq(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()),
                         every_n_week: eq(1),
@@ -301,9 +260,9 @@ mod tests {
                     task_title: eq("recurring task #1".to_owned()),
                     task_point: some(eq(1)),
                 }),
-                pat!(TaskSchedule {
+                pat!(Plan {
                     user_id: eq(DEFAULT_USER_UUID),
-                    date_spec: pat!(DateSpec::RepeatsWeekly(pat!(WeeklySpec {
+                    date_spec: pat!(DateSpec::RepeatsWeekly(pat!(RecurringWeekly {
                         week_days: unordered_elements_are![eq(Weekday::Mon), eq(Weekday::Sun)],
                         start_date: eq(NaiveDate::from_ymd_opt(2024, 1, 5).unwrap()),
                         every_n_week: eq(2),
@@ -326,7 +285,7 @@ mod tests {
 
         println!(
             "{:#?}",
-            serde_json::to_string(&DateSpec::RepeatsWeekly(WeeklySpec {
+            serde_json::to_string(&DateSpec::RepeatsWeekly(RecurringWeekly {
                 week_days: vec![Weekday::Mon, Weekday::Tue],
                 start_date: NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(), // Monday
                 every_n_week: 1,
@@ -335,7 +294,7 @@ mod tests {
         create_task_schedule(
             DEFAULT_USER_UUID,
             CreateTaskScheduleInput {
-                date_spec: Json(DateSpec::RepeatsWeekly(WeeklySpec {
+                date_spec: Json(DateSpec::RepeatsWeekly(RecurringWeekly {
                     week_days: vec![Weekday::Mon, Weekday::Tue],
                     start_date: NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(), // Monday
                     every_n_week: 1,

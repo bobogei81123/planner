@@ -1,9 +1,14 @@
-use std::{collections::HashMap, marker::PhantomData};
+use std::{collections::HashMap};
 
-use googletest::{matcher::MatcherResult, pat, prelude::Matcher};
+use googletest::{
+    description::Description,
+    matcher::MatcherResult,
+    matchers::pat,
+    prelude::{Matcher, MatcherBase},
+};
 use uuid::Uuid;
 
-pub fn json_null() -> impl Matcher<ActualT = serde_json::Value> {
+pub fn json_null() -> impl for<'a> Matcher<&'a serde_json::Value> {
     pat!(serde_json::Value::Null)
 }
 
@@ -13,7 +18,7 @@ macro_rules! json_obj {
         {
             let mut map = std::collections::HashMap::new();
             $({
-                let val_matcher: Box<dyn Matcher<ActualT = serde_json::Value>> = Box::new($val);
+                let val_matcher: Box<dyn for<'a> Matcher<&'a serde_json::Value>> = Box::new($val);
                 map.insert(stringify!($key).to_owned(), val_matcher);
             })*
 
@@ -22,14 +27,13 @@ macro_rules! json_obj {
     };
 }
 
+#[derive(MatcherBase)]
 pub struct JsonObjMatcher {
-    pub expect: HashMap<String, Box<dyn Matcher<ActualT = serde_json::Value>>>,
+    pub expect: HashMap<String, Box<dyn for<'a> Matcher<&'a serde_json::Value>>>,
 }
 
-impl Matcher for JsonObjMatcher {
-    type ActualT = serde_json::Value;
-
-    fn matches(&self, actual: &Self::ActualT) -> MatcherResult {
+impl<'a> Matcher<&'a serde_json::Value> for JsonObjMatcher {
+    fn matches(&self, actual: &'a serde_json::Value) -> MatcherResult {
         let serde_json::Value::Object(map) = actual else {
             return MatcherResult::NoMatch;
         };
@@ -49,139 +53,107 @@ impl Matcher for JsonObjMatcher {
         MatcherResult::Match
     }
 
-    fn describe(&self, matcher_result: MatcherResult) -> String {
-        let mut result = match matcher_result {
+    fn describe(&self, matcher_result: MatcherResult) -> Description {
+        let prefix = match matcher_result {
             MatcherResult::Match => "is",
             MatcherResult::NoMatch => "is not",
         }
         .to_owned();
 
         if self.expect.is_empty() {
-            return format!("{} an empty JSON object", result);
+            return format!("{} an empty JSON object", prefix).into();
         }
 
-        let mut first = true;
-        result.push_str(" a JSON object with key(s): ");
-        for (key, val) in self.expect.iter() {
-            if first {
-                first = false
-            } else {
-                result.push_str(", ");
-            }
-            result.push_str(&format!(
-                "(\"{}\" with value that {})",
-                key,
-                val.describe(matcher_result),
-            ));
-        }
-
-        result
+        format!(
+            "{} a JSON object with these key-value pair(s):\n{}",
+            prefix,
+            self.expect
+                .iter()
+                .map(|(key, val)| {
+                    format!(
+                        "key \"{}\" with value that {}",
+                        key,
+                        val.describe(matcher_result),
+                    )
+                })
+                .collect::<Description>()
+                .bullet_list()
+                .indent()
+        ).into()
     }
 }
 
 pub fn json_string(
-    matcher: impl Matcher<ActualT = String> + 'static,
-) -> impl Matcher<ActualT = serde_json::Value> {
+    matcher: impl for<'a> Matcher<&'a String>,
+) -> impl for<'a> Matcher<&'a serde_json::Value> {
     pat!(serde_json::Value::String(matcher))
 }
 
-pub struct JsonNumberMatcher<T, InnerT>
+#[derive(MatcherBase)]
+pub struct JsonU64Matcher<T>
 where
-    T: Matcher<ActualT = InnerT>,
-    InnerT: TryFromJsonNumber,
+    T: Matcher<u64>,
 {
     pub expect: T,
 }
 
-impl<T, InnerT> Matcher for JsonNumberMatcher<T, InnerT>
+impl<'a, T> Matcher<&'a serde_json::Value> for JsonU64Matcher<T>
 where
-    T: Matcher<ActualT = InnerT>,
-    InnerT: TryFromJsonNumber,
+    T: Matcher<u64>,
 {
-    type ActualT = serde_json::Value;
-
-    fn matches(&self, actual: &Self::ActualT) -> MatcherResult {
+    fn matches(&self, actual: &'a serde_json::Value) -> MatcherResult {
         let serde_json::Value::Number(number) = actual else {
             return MatcherResult::NoMatch;
         };
 
-        let Some(number): Option<InnerT> = TryFromJsonNumber::try_from(number) else {
+        let Some(number) = number.as_u64() else {
             return MatcherResult::NoMatch;
         };
 
-        self.expect.matches(&number)
+        self.expect.matches(number)
     }
 
-    fn describe(&self, matcher_result: MatcherResult) -> String {
+    fn describe(&self, matcher_result: MatcherResult) -> Description {
         let prefix = match matcher_result {
             MatcherResult::Match => "is",
             MatcherResult::NoMatch => "is not",
         };
 
         format!(
-            "{} a JSON number that {}",
+            "{} a JSON number, which {}",
             prefix,
             self.expect.describe(matcher_result)
         )
+        .into()
     }
 }
 
-pub trait TryFromJsonNumber: Sized + Copy {
-    fn try_from(value: &serde_json::Number) -> Option<Self>;
+pub fn json_u64(matcher: impl Matcher<u64>) -> impl for<'a> Matcher<&'a serde_json::Value> {
+    JsonU64Matcher { expect: matcher }
 }
 
-impl TryFromJsonNumber for i64 {
-    fn try_from(value: &serde_json::Number) -> Option<Self> {
-        value.as_i64()
-    }
-}
-
-impl TryFromJsonNumber for u64 {
-    fn try_from(value: &serde_json::Number) -> Option<Self> {
-        value.as_u64()
-    }
-}
-
-impl TryFromJsonNumber for f64 {
-    fn try_from(value: &serde_json::Number) -> Option<Self> {
-        value.as_f64()
-    }
-}
-
-pub fn json_number<InnerT>(
-    matcher: impl Matcher<ActualT = InnerT> + 'static,
-) -> impl Matcher<ActualT = serde_json::Value>
+#[derive(MatcherBase)]
+pub struct UuidStrMatcher<ExpectedM>
 where
-    InnerT: TryFromJsonNumber,
-{
-    JsonNumberMatcher { expect: matcher }
-}
-
-pub struct UuidStrMatcher<ExpectedM, ActualT>
-where
-    ExpectedM: Matcher<ActualT = Uuid>,
-    ActualT: AsRef<str>,
+    ExpectedM: Matcher<Uuid>,
 {
     expect: ExpectedM,
-    phantom: PhantomData<ActualT>,
 }
 
-impl<ExpectedM, ActualT> Matcher for UuidStrMatcher<ExpectedM, ActualT>
+impl<ExpectedM, ActualT> Matcher<ActualT> for UuidStrMatcher<ExpectedM>
 where
-    ExpectedM: Matcher<ActualT = Uuid>,
-    ActualT: AsRef<str> + std::fmt::Debug,
+    ExpectedM: Matcher<Uuid>,
+    ActualT: AsRef<str> + std::fmt::Debug + Copy,
 {
-    type ActualT = ActualT;
-
-    fn matches(&self, actual: &ActualT) -> MatcherResult {
+    fn matches(&self, actual: ActualT) -> MatcherResult {
         let Ok(uuid) = Uuid::parse_str(actual.as_ref()) else {
             return MatcherResult::NoMatch;
         };
 
-        self.expect.matches(&uuid)
+        self.expect.matches(uuid)
     }
 
-    fn describe(&self, matcher_result: MatcherResult) -> String {
+    fn describe(&self, matcher_result: MatcherResult) -> Description {
         let prefix = match matcher_result {
             MatcherResult::Match => "is",
             MatcherResult::NoMatch => "is not",
@@ -191,16 +163,13 @@ where
             prefix,
             self.expect.describe(matcher_result)
         )
+        .into()
     }
 }
 
-pub fn uuid_str<ExpectedM, ActualT>(matcher: ExpectedM) -> UuidStrMatcher<ExpectedM, ActualT>
+pub fn uuid_str<ExpectedM>(matcher: ExpectedM) -> UuidStrMatcher<ExpectedM>
 where
-    ExpectedM: Matcher<ActualT = Uuid>,
-    ActualT: AsRef<str>,
+    ExpectedM: Matcher<Uuid>,
 {
-    UuidStrMatcher {
-        expect: matcher,
-        phantom: PhantomData,
-    }
+    UuidStrMatcher { expect: matcher }
 }
