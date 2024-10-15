@@ -1,19 +1,32 @@
 import { CodegenConfig } from '@graphql-codegen/cli';
 
-const config: CodegenConfig = {
-  schema: 'http://127.0.0.1:8000/graphql',
-  documents: ['src/**/*.svelte', 'src/**/*.ts', 'src/route/+layout.svelte'],
-  generates: {
-    './src/gql/': {
-      preset: 'client',
-      config: {
-        useTypeImports: true
-      }
+const generates: CodegenConfig['generates'] = {
+  './src/graphql/generated/': {
+    preset: 'client',
+    presetConfig: {
+      gqlTagName: 'gql',
     },
-    './src/generated-introspection.json': {
-      plugins: ['urql-introspection']
-    }
-  }
+    plugins: [],
+    config: {
+      scalars: {
+        NaiveDate: 'string',
+        UUID: 'string',
+      },
+    },
+  },
+};
+if (process.env.NODE_ENV !== 'production') {
+  generates['./schema.graphql'] = {
+    plugins: ['schema-ast'],
+  };
+}
+
+const config: CodegenConfig = {
+  schema:
+    process.env.NODE_ENV === 'production' ? './schema.graphql' : 'http://127.0.0.1:8000/graphql',
+  documents: ['src/**/*.{ts,tsx}'],
+  generates,
+  ignoreNoDocuments: true,
 };
 
 export default config;
