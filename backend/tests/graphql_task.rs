@@ -1,8 +1,6 @@
 mod common;
 mod matchers;
 
-use std::str::FromStr;
-
 use common::{Result, TestServer, UserSession};
 use googletest::prelude::*;
 

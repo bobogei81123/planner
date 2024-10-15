@@ -1,24 +1,26 @@
 use std::sync::Arc;
 
-use sea_orm::DbErr;
+use sea_orm::{DbErr, TransactionError};
 use uuid::Uuid;
 
 pub(crate) mod maybe;
 pub(crate) mod task;
 pub(crate) mod time;
 
-pub(crate) type AppResult<T> = Result<T, AppError>;
+pub type AppResult<T> = Result<T, AppError>;
 
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum AppError {
+pub enum AppError {
     #[error("{typ} with id = {id} is not found")]
     ResourceNotFound { typ: ResourceType, id: Uuid },
-    #[error("Internal error: {0}")]
+    #[error("invalid input: {reason}")]
+    InvalidInput { reason: String },
+    #[error("internal error: {0}")]
     Internal(#[from] anyhow::Error),
 }
 
 #[derive(Debug, strum::Display)]
-pub(crate) enum ResourceType {
+pub enum ResourceType {
     Task,
 }
 
@@ -27,6 +29,12 @@ impl AppError {
         AppError::ResourceNotFound {
             typ: ResourceType::Task,
             id,
+        }
+    }
+
+    fn invalid_input(reason: impl Into<String>) -> Self {
+        AppError::InvalidInput {
+            reason: reason.into(),
         }
     }
 }
@@ -80,5 +88,18 @@ impl From<DbErr> for AppError {
 impl From<Arc<DbErr>> for AppError {
     fn from(value: Arc<sea_orm::DbErr>) -> Self {
         AppError::Internal(value.into())
+    }
+}
+
+impl<E> From<TransactionError<E>> for AppError
+where
+    E: std::error::Error,
+    AppError: From<E>,
+{
+    fn from(value: TransactionError<E>) -> Self {
+        match value {
+            TransactionError::Connection(e) => e.into(),
+            TransactionError::Transaction(e) => e.into(),
+        }
     }
 }

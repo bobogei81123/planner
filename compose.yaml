@@ -1,0 +1,22 @@
+name: planner
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:asd12345@db:5432/planner
+      - "BIND_ADDR=0.0.0.0:8000"
+      - "SCHEDULE_JOBS_CRON=*/10 * * * * *"
+
+  db:
+    image: postgres:16
+    ports:
+      - "8001:5432"
+    environment:
+      POSTGRES_DB: planner
+      POSTGRES_PASSWORD: asd12345
+
+    volumes:
+      - ./local/data:/var/lib/postgresql/data

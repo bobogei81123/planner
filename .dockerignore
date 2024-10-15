@@ -12,3 +12,4 @@ DOCKERFILE
 
 /frontend-react/build
 /frontend-react/dist
+/frontend-react/node_modules

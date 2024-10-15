@@ -8,7 +8,7 @@ use tower_http::{
 
 mod app;
 mod auth;
-// mod db;
+pub(crate) mod db;
 pub mod entities;
 mod graphql;
 mod utils;
@@ -25,3 +25,5 @@ pub async fn build_app(pg_conn: DatabaseConnection) -> Router {
         .layer(TraceLayer::new_for_http())
         .layer(Extension(pg_conn))
 }
+
+pub use crate::app::task::schedule_all_recurring_tasks_until;

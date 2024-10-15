@@ -15,18 +15,19 @@ pub struct Model {
     pub parent_id: Option<Uuid>,
     pub title: String,
     pub cost: Option<i32>,
+    pub next_recurring_check_date: Option<Date>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "super::users::Entity",
-        from = "Column::UserId",
-        to = "super::users::Column::Id",
+        belongs_to = "Entity",
+        from = "Column::ParentId",
+        to = "Column::Id",
         on_update = "NoAction",
-        on_delete = "Cascade"
+        on_delete = "SetNull"
     )]
-    Users2,
+    SelfRef,
     #[sea_orm(
         belongs_to = "super::users::Entity",
         from = "Column::UserId",
@@ -34,7 +35,13 @@ pub enum Relation {
         on_update = "NoAction",
         on_delete = "Cascade"
     )]
-    Users1,
+    Users,
+}
+
+impl Related<super::users::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Users.def()
+    }
 }
 
 impl ActiveModelBehavior for ActiveModel {}

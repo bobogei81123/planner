@@ -20,11 +20,12 @@ export const LIST_TASKS = gql(`
   }
 `);
 export const CREATE_TASK = gql(`
-  mutation CreateTask($title: String!, $cost: Int, $scheduledOn: InputEpoch) {
+  mutation CreateTask($title: String!, $cost: Int, $scheduledOn: InputEpoch, $recurringSpec: InputRecurringSpec) {
     createTask(input: {
       title: $title
       cost: $cost
       scheduledOn: $scheduledOn
+      recurringSpec: $recurringSpec
     }) {
       id
       title

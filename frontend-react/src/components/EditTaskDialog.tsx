@@ -2,76 +2,73 @@ import * as dateFns from 'date-fns';
 import { AlertCircle, CalendarIcon, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
-import { CreateTaskInput, UpdateTaskInput } from '@/graphql/generated/graphql';
+import { toGQLDate } from '@/graphql/date';
+import { CreateTaskInput, InputRecurringSpec, UpdateTaskInput } from '@/graphql/generated/graphql';
 import { Epoch, EpochTypeString, Task } from '@/lib/task';
 import { cn } from '@/lib/utils';
 
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 import { Button } from './ui/button';
 import { Calendar } from './ui/calendar';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from './ui/dialog';
+import { Checkbox } from './ui/checkbox';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import {
+  Sheet,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from './ui/sheet';
 
 interface EditTaskData {
   title?: string;
   cost?: number;
   epochTypeString: EpochTypeString;
   epochDate?: Date;
+  recurring?: RecurringSpec;
 }
 
+type RecurringSpec = { everyNWeek: number };
+
 interface EditTaskFormProps {
-  defaultValue: EditTaskData;
-  updateValue: (fn: (prev: EditTaskData) => EditTaskData) => void;
+  value: EditTaskData;
+  setValue: (fn: (prev: EditTaskData) => EditTaskData) => void;
   errorMessage?: string;
 }
 
 function EditTaskForm({
-  defaultValue: { title, cost, epochTypeString, epochDate },
-  updateValue,
+  value: { title, cost, epochTypeString, epochDate, recurring },
+  setValue,
   errorMessage,
 }: EditTaskFormProps) {
-  const setTitle = (title?: string) => {
-    updateValue((prev) => {
-      return {
-        ...prev,
-        title,
-      };
-    });
-  };
-  const setCost = (cost?: number) => {
-    updateValue((prev) => {
-      return {
-        ...prev,
-        cost,
-      };
-    });
-  };
-  const setEpochTypeString = (epochTypeString: EpochTypeString) => {
-    updateValue((prev) => {
-      return {
-        ...prev,
-        epochTypeString,
-      };
-    });
-  };
-  const setEpochDate = (epochDate?: Date) => {
-    updateValue((prev) => {
-      return {
-        ...prev,
-        epochDate,
-      };
-    });
-  };
+  function wrapFn<T>(fn: (value: T) => Partial<EditTaskData>): (value: T) => void {
+    return (value: T) => {
+      const update = fn(value);
+      setValue((prev) => ({ ...prev, ...update }));
+    };
+  }
+  const setTitle = wrapFn((title?: string) => ({ title }));
+  const setCost = wrapFn((cost?: number) => ({ cost }));
+  const setEpochTypeString = wrapFn((epochTypeString: EpochTypeString) => ({
+    epochTypeString,
+  }));
+  const setEpochDate = wrapFn((epochDate?: Date) => ({
+    epochDate,
+  }));
+  const setRecurring = wrapFn((recurring?: RecurringSpec) => ({
+    recurring,
+  }));
+  function onRecurringCheckChange(checked: boolean) {
+    if (checked) {
+      setRecurring({ everyNWeek: 1 });
+    } else {
+      setRecurring(undefined);
+    }
+  }
 
   return (
     <div className="grid gap-4 py-4">
@@ -82,7 +79,7 @@ function EditTaskForm({
         <Input
           id="title-input"
           className="col-span-3"
-          defaultValue={title}
+          value={title}
           onChange={(e) => setTitle(e.target.value)}
         />
       </div>
@@ -94,7 +91,7 @@ function EditTaskForm({
           id="cost-input"
           type="number"
           className="col-span-3"
-          defaultValue={cost}
+          value={cost}
           onChange={(e) =>
             setCost(e.target.value != undefined ? Number(e.target.value) : undefined)
           }
@@ -142,6 +139,37 @@ function EditTaskForm({
           </Popover>
         </div>
       )}
+      <div className="grid grid-cols-4 items-center gap-4">
+        <Label className="text-right">Recurring</Label>
+        <Checkbox checked={recurring !== undefined} onCheckedChange={onRecurringCheckChange}>
+          <SelectTrigger className="col-span-3">
+            <SelectValue placeholder="Day" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="DATE">Day</SelectItem>
+            <SelectItem value="WEEK">Week</SelectItem>
+            <SelectItem value="ALL">All</SelectItem>
+          </SelectContent>
+        </Checkbox>
+      </div>
+      {recurring !== undefined && (
+        <div className="grid grid-cols-4 items-center gap-4">
+          <Label htmlFor="cost-input" className="text-right">
+            Recur every N week
+          </Label>
+          <Input
+            id="recurring-week-input"
+            type="number"
+            className="col-span-3"
+            value={recurring.everyNWeek}
+            onChange={(e) =>
+              setRecurring({
+                everyNWeek: e.target.value != undefined ? Number(e.target.value) : 1,
+              })
+            }
+          />
+        </div>
+      )}
       {errorMessage && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -173,6 +201,7 @@ export function CreateTaskDialog({ onCreate, trigger, defaultEpoch }: CreateTask
     cost,
     epochTypeString,
     epochDate,
+    recurring,
   }: EditTaskData): CreateTaskData | Error {
     if (title == undefined || title === '') {
       return new Error('Title is required');
@@ -197,11 +226,21 @@ export function CreateTaskDialog({ onCreate, trigger, defaultEpoch }: CreateTask
         break;
       }
     }
+    let recurringSpec: InputRecurringSpec | undefined = undefined;
+    if (recurring !== undefined) {
+      recurringSpec = {
+        pattern: {
+          every: recurring.everyNWeek,
+        },
+        startDate: toGQLDate(dateFns.startOfWeek(new Date())),
+      };
+    }
 
     return {
       title,
       cost,
       scheduledOn: epoch.toGQL(),
+      recurringSpec,
     };
   }
 
@@ -231,20 +270,20 @@ export function CreateTaskDialog({ onCreate, trigger, defaultEpoch }: CreateTask
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>Create task</DialogTitle>
-        </DialogHeader>
-        <EditTaskForm defaultValue={data} updateValue={setData} errorMessage={errorMessage} />
-        <DialogFooter>
+    <Sheet modal={false} open={open} onOpenChange={onOpenChange}>
+      <SheetTrigger asChild>{trigger}</SheetTrigger>
+      <SheetContent className="sm:max-w-[425px]">
+        <SheetHeader>
+          <SheetTitle>Create task</SheetTitle>
+        </SheetHeader>
+        <EditTaskForm value={data} setValue={setData} errorMessage={errorMessage} />
+        <SheetFooter>
           <Button type="submit" onClick={onSubmitHandler}>
             Create
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -326,20 +365,20 @@ export function UpdateTaskDialog({ task, onClose, onUpdate, onDelete }: UpdateTa
   }
 
   return (
-    <Dialog open={true} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>Create task</DialogTitle>
-        </DialogHeader>
-        <EditTaskForm defaultValue={data} updateValue={setData} errorMessage={errorMessage} />
-        <DialogFooter>
+    <Sheet modal={false} open={true} onOpenChange={onOpenChange}>
+      <SheetContent className="sm:max-w-[425px]">
+        <SheetHeader>
+          <SheetTitle>Update task</SheetTitle>
+        </SheetHeader>
+        <EditTaskForm value={data} setValue={setData} errorMessage={errorMessage} />
+        <SheetFooter>
           <Button variant="destructive" onClick={onDeleteHandler}>
             <Trash2 className="mr-2 h-4 w-4" />
             Delete
           </Button>
           <Button onClick={onSubmitHandler}>Update</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }

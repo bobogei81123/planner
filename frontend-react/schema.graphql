@@ -5,6 +5,7 @@ schema {
 
 input CreateTaskInput {
   cost: Int
+  recurringSpec: InputRecurringSpec
   scheduledOn: InputEpoch
   title: String!
 }
@@ -22,6 +23,15 @@ enum EpochType {
 input InputEpoch {
   date: NaiveDate!
   type: EpochType!
+}
+
+input InputRecurringPattern {
+  every: Int!
+}
+
+input InputRecurringSpec {
+  pattern: InputRecurringPattern!
+  startDate: NaiveDate!
 }
 
 type MutationRoot {
@@ -45,10 +55,20 @@ type QueryRoot {
   tasks(filter: TaskFilter): [Task!]!
 }
 
+type RecurringPattern {
+  every: Int!
+}
+
+type RecurringSpec {
+  pattern: RecurringPattern!
+  startDate: NaiveDate!
+}
+
 type Task {
   cost: Int
   id: UUID!
   isCompleted: Boolean!
+  recurring: RecurringSpec
   scheduledOn: Epoch
   title: String!
 }

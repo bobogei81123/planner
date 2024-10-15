@@ -7,7 +7,7 @@ import { DELETE_TASK, UPDATE_TASK } from '@/graphql/task';
 import { Task } from '@/lib/task';
 
 import { UpdateTaskDialog } from './EditTaskDialog';
-import { Checkbox } from './ui/checkbox';
+import { TodoCheckbox } from './TodoCheckbox';
 
 interface TaskCardProps {
   task: Task;
@@ -57,10 +57,12 @@ export default function TaskCard({ task }: TaskCardProps) {
 
   return (
     <>
-      <div className="flex items-center space-x-4">
-        <Checkbox checked={isCompleted} onCheckedChange={onCompletedChange} />
-        <h2 onClick={() => setIsEditing(true)}>{title}</h2>
-        {cost != null && <p>[{cost}]</p>}
+      <div className="w-full h-16 flex items-center">
+        <TodoCheckbox className="mx-3" checked={isCompleted} onCheckedChange={onCompletedChange} />
+        <div className="grow min-w-0 truncate" onClick={() => setIsEditing(true)}>
+          <span className="text-lg">{title}</span>
+        </div>
+        {cost != undefined && <CostSquare cost={cost} />}
       </div>
       {isEditing && (
         <UpdateTaskDialog
@@ -71,5 +73,13 @@ export default function TaskCard({ task }: TaskCardProps) {
         />
       )}
     </>
+  );
+}
+
+function CostSquare({ cost }: { cost: number }) {
+  return (
+    <div className="w-10 h-10 ml-2 bg-muted rounded-sm flex items-center justify-center shrink-0">
+      <span className="text-xl">{cost}</span>
+    </div>
   );
 }

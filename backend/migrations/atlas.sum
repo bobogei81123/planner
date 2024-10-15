@@ -1,4 +1,4 @@
-h1:yl+BHTK5QZi1t91bjkZGTAdddnIM8VerlgQY0q4Uv58=
+h1:/XBbgPkDgoLvIZddLvGwjOiJ41P9sn+Ip7fxCRU3Udk=
 0001_create-users.down.sql h1:EU9WrKrVBOL88xexzOIleFlbSnjZUfTa2IH8OrUTHnU=
 0001_create-users.up.sql h1:leQqBsAE1XigXO4jgeFa4lbFOGWEP4DrjG+PiTGqzPA=
 0002_create-tasks.down.sql h1:NqlpxC9XjuMsgWCXIaq9VAJ/G7Tsux+rdMDRKKCCiAg=
@@ -11,3 +11,5 @@ h1:yl+BHTK5QZi1t91bjkZGTAdddnIM8VerlgQY0q4Uv58=
 20240119062404_add-task-schedule.up.sql h1:it/dfBLETawB3r/iqhO950IU+/EYczZwilF1ciakmb8=
 20240808052611_dev-1.down.sql h1:3xNTCCSMVvOJWT5sbGvbt9cb39tesEAesrvQD2jrsR8=
 20240808052611_dev-1.up.sql h1:T1NJs2Ur3f+Nw5shjZIfEqY5eYkGR22FwwsO7y+3nMc=
+20240924070255_add-recurring-columns.down.sql h1:cn/VB085sk72x8FUrFDkUi8Ttjx3sUDuojjtiMqhEoU=
+20240924070255_add-recurring-columns.up.sql h1:/sL7rTFsUsoIZqGWCMCdVJNviB2jHZThHQHMiSlIwOE=

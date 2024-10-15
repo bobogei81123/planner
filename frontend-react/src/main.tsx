@@ -3,12 +3,14 @@ import { setContext } from '@apollo/client/link/context';
 import { onError } from '@apollo/client/link/error';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { RouterProvider, createBrowserRouter } from 'react-router-dom';
+import { Navigate, RouterProvider, createBrowserRouter } from 'react-router-dom';
 
+import { ThemeProvider } from './components/themeProvider.tsx';
 import './index.css';
 import { setInitialDateOptions } from './lib/date.ts';
 import App from './routes/App.tsx';
 import Login from './routes/Login.tsx';
+import Tasks from './routes/Tasks.tsx';
 
 setInitialDateOptions();
 
@@ -55,6 +57,16 @@ const router = createBrowserRouter([
   {
     path: '/',
     element: <App />,
+    children: [
+      {
+        path: 'tasks',
+        element: <Tasks />,
+      },
+      {
+        path: '',
+        element: <Navigate to="/tasks" replace />,
+      },
+    ],
   },
   {
     path: '/login',
@@ -65,7 +77,9 @@ const router = createBrowserRouter([
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ApolloProvider client={client}>
-      <RouterProvider router={router} />
+      <ThemeProvider>
+        <RouterProvider router={router} />
+      </ThemeProvider>
     </ApolloProvider>
   </StrictMode>,
 );

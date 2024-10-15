@@ -18,6 +18,7 @@ use axum::{
 };
 use chrono::NaiveDate;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use tracing::info;
 use uuid::Uuid;
 
 use crate::app;
@@ -129,6 +130,37 @@ impl From<app::time::Epoch> for Epoch {
     }
 }
 
+#[derive(SimpleObject, InputObject)]
+#[graphql(input_name = "InputRecurringSpec")]
+struct RecurringSpec {
+    pub(crate) start_date: NaiveDate,
+    pub(crate) pattern: RecurringPattern,
+}
+
+impl From<RecurringSpec> for app::time::RecurringSpec {
+    fn from(value: RecurringSpec) -> Self {
+        app::time::RecurringSpec {
+            start_date: value.start_date,
+            pattern: value.pattern.into(),
+        }
+    }
+}
+
+impl From<RecurringPattern> for app::time::RecurringPattern {
+    fn from(value: RecurringPattern) -> Self {
+        app::time::RecurringPattern::EveryEpoch {
+            kind: app::time::EpochKind::Week,
+            every: value.every,
+        }
+    }
+}
+
+#[derive(SimpleObject, InputObject)]
+#[graphql(input_name = "InputRecurringPattern")]
+struct RecurringPattern {
+    every: i32,
+}
+
 #[derive(InputObject)]
 struct TaskFilter {
     view_filter: Option<ViewFilter>,
@@ -164,6 +196,7 @@ struct Task {
     is_completed: bool,
     title: String,
     cost: Option<i32>,
+    recurring: Option<RecurringSpec>,
 }
 
 impl From<app::task::Task> for Task {
@@ -175,6 +208,24 @@ impl From<app::task::Task> for Task {
             is_completed,
             title: value.title,
             cost: value.cost,
+            recurring: value.recurring_data.and_then(|r| {
+                let app::time::RecurringSpec {
+                    start_date,
+                    pattern,
+                } = r.spec;
+                let app::time::RecurringPattern::EveryEpoch {
+                    kind: app::time::EpochKind::Week,
+                    every,
+                } = pattern
+                else {
+                    return None;
+                };
+
+                Some(RecurringSpec {
+                    start_date,
+                    pattern: RecurringPattern { every },
+                })
+            }),
         }
     }
 }
@@ -201,6 +252,7 @@ impl QueryRoot {
 #[derive(InputObject)]
 struct CreateTaskInput {
     scheduled_on: Option<Epoch>,
+    recurring_spec: Option<RecurringSpec>,
     title: String,
     cost: Option<i32>,
 }
@@ -209,6 +261,7 @@ impl From<CreateTaskInput> for app::task::CreateTaskInput {
     fn from(value: CreateTaskInput) -> Self {
         app::task::CreateTaskInput {
             scheduled_on: value.scheduled_on.map(From::from),
+            recurring_spec: value.recurring_spec.map(From::from),
             title: value.title,
             cost: value.cost,
         }
@@ -322,6 +375,7 @@ struct User {
 impl Claims {
     async fn get_user(&self, db_conn: &DatabaseConnection) -> anyhow::Result<Option<User>> {
         let username = &self.sub;
+        info!(username);
 
         Ok(entities::users::Entity::find()
             .filter(entities::users::Column::Username.eq(username))

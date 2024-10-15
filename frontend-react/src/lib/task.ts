@@ -8,6 +8,8 @@ import {
   InputEpoch,
 } from '@/graphql/generated/graphql';
 
+import { formatISODate } from './date';
+
 interface DatedEpoch {
   type: EpochType;
   date: Date;
@@ -29,6 +31,14 @@ export class Epoch {
 
   get type(): EpochType | null {
     return this.inner?.type ?? null;
+  }
+
+  get epoch(): GQLEpoch | undefined {
+    if (this.inner === null) return undefined;
+    return {
+      type: this.inner.type,
+      date: toGQLDate(this.inner.date),
+    };
   }
 
   static nullEpoch(): Epoch {
@@ -126,6 +136,28 @@ export class Epoch {
         return `${dateFns.format(start, 'PP')} ${EM_DASH} ${dateFns.format(end, 'PP')}`;
       }
     }
+  }
+
+  toUrlParam(): string {
+    switch (this.inner?.type) {
+      case undefined:
+        return 'ALL';
+      case EpochType.Date:
+        return 'DATE.' + formatISODate(this.startDate()!);
+      case EpochType.Week:
+        return 'WEEK.' + formatISODate(this.startDate()!);
+    }
+  }
+
+  static fromUrlParam(param: string): Epoch | undefined {
+    if (param === 'ALL') return Epoch.nullEpoch();
+    const split = param.split('.');
+    if (split.length !== 2) return undefined;
+    const [type, dateStr] = split;
+    const date = dateFns.parseISO(dateStr);
+    if (type === 'DATE') return Epoch.ofDate(date);
+    if (type === 'WEEK') return Epoch.ofWeek(date);
+    return undefined;
   }
 }
 

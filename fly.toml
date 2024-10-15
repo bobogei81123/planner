@@ -12,6 +12,7 @@ kill_timeout = "5s"
 
 [env]
   BIND_ADDR = "[::]:8080"
+  SCHEDULE_JOBS_CRON = "0 0 0 * * *"
 
 [[services]]
   protocol = "tcp"

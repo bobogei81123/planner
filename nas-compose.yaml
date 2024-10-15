@@ -1,0 +1,30 @@
+name: planner
+
+services:
+  app:
+    container_name: planner-app
+    image: registry.fishbbghome.synology.me/planner
+    ports:
+      - "9000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:asd12345@db:5432/planner
+      - "BIND_ADDR=0.0.0.0:8000"
+      - "SCHEDULE_JOBS_CRON=*/10 * * * * *"
+
+  db:
+    image: postgres:16
+    ports:
+      - "9001:5432"
+    environment:
+      POSTGRES_DB: planner
+      POSTGRES_PASSWORD: asd12345
+
+    volumes:
+      - /volume1/docker/planner/pg_data:/var/lib/postgresql/data
+
+  watchtower:
+    image: containrrr/watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /root/.docker/config.json:/config.json
+    command: --interval 60 planner-app

@@ -1,6 +1,10 @@
 pub(super) use chrono::NaiveDate;
-use chrono::TimeDelta;
+use chrono::{Local, TimeDelta};
 use serde::{Deserialize, Serialize};
+
+pub(crate) fn today() -> NaiveDate {
+    Local::now().date_naive()
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) struct DateRange {
@@ -41,13 +45,19 @@ impl DateRange {
     }
 }
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub(crate) enum Epoch {
     Date(#[serde(with = "serde_naive_date")] NaiveDate),
     Week(Week),
 }
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub(crate) enum EpochKind {
+    Date,
+    Week,
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub(crate) struct Week {
     #[serde(with = "serde_naive_date")]
     start_date: NaiveDate,
@@ -150,6 +160,55 @@ mod serde_naive_date {
     }
 }
 
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub(crate) struct RecurringSpec {
+    pub(crate) start_date: NaiveDate,
+    pub(crate) pattern: RecurringPattern,
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub(crate) enum RecurringPattern {
+    EveryEpoch { kind: EpochKind, every: i32 },
+}
+
+impl RecurringSpec {
+    pub(crate) fn next_after(&self, date: NaiveDate) -> Epoch {
+        match &self.pattern {
+            RecurringPattern::EveryEpoch {
+                kind: EpochKind::Date,
+                every,
+            } => {
+                if date < self.start_date {
+                    return Epoch::Date(self.start_date);
+                }
+
+                let date_diff = (date - self.start_date).num_days();
+                let every = *every as i64;
+                let next = self.start_date + TimeDelta::days((date_diff / every + 1) * every);
+                Epoch::Date(next)
+            }
+            RecurringPattern::EveryEpoch {
+                kind: EpochKind::Week,
+                every,
+            } => {
+                if date < self.start_date {
+                    return Epoch::Week(Week::from_start_date(self.start_date));
+                }
+
+                let week_diff = (date - self.start_date).num_weeks();
+                let every = *every as i64;
+                let next_week_start =
+                    self.start_date + TimeDelta::weeks((week_diff / every + 1) * every);
+                Epoch::Week(Week::from_start_date(next_week_start))
+            }
+        }
+    }
+
+    pub(crate) fn next_starting_from(&self, date: NaiveDate) -> Epoch {
+        self.next_after(date - TimeDelta::days(1))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use googletest::prelude::*;
@@ -164,5 +223,62 @@ mod tests {
         });
 
         expect_true!(week.contains(Epoch::Date(NaiveDate::from_ymd_opt(2024, 9, 15).unwrap())));
+    }
+
+    #[googletest::test]
+    fn recurring_week_next_after_a_day_is_next_n_week() {
+        let recurring = RecurringSpec {
+            start_date: NaiveDate::from_ymd_opt(2024, 9, 23).unwrap(), // Monday
+            pattern: RecurringPattern::EveryEpoch {
+                kind: EpochKind::Week,
+                every: 2,
+            },
+        };
+
+        expect_eq!(
+            // The Monday exactly 2 weeks later.
+            recurring.next_starting_from(NaiveDate::from_ymd_opt(2024, 10, 7).unwrap()),
+            Epoch::Week(Week {
+                start_date: NaiveDate::from_ymd_opt(2024, 10, 7).unwrap()
+            })
+        );
+        expect_eq!(
+            recurring.next_starting_from(NaiveDate::from_ymd_opt(2024, 10, 8).unwrap()),
+            Epoch::Week(Week {
+                start_date: NaiveDate::from_ymd_opt(2024, 10, 21).unwrap()
+            })
+        );
+        expect_eq!(
+            recurring.next_starting_from(NaiveDate::from_ymd_opt(2024, 10, 15).unwrap()),
+            Epoch::Week(Week {
+                start_date: NaiveDate::from_ymd_opt(2024, 10, 21).unwrap()
+            })
+        );
+    }
+
+    #[googletest::test]
+    fn recurring_week_next_after_a_day_before_start_date_is_the_week_of_start_date() {
+        let recurring = RecurringSpec {
+            start_date: NaiveDate::from_ymd_opt(2024, 9, 23).unwrap(),
+            pattern: RecurringPattern::EveryEpoch {
+                kind: EpochKind::Week,
+                every: 2,
+            },
+        };
+
+        expect_eq!(
+            recurring.next_starting_from(NaiveDate::from_ymd_opt(2020, 1, 1).unwrap()),
+            Epoch::Week(Week {
+                // Should be the monday 4 weeks after
+                start_date: NaiveDate::from_ymd_opt(2024, 9, 23).unwrap()
+            })
+        );
+        expect_eq!(
+            recurring.next_starting_from(NaiveDate::from_ymd_opt(2024, 9, 23).unwrap()),
+            Epoch::Week(Week {
+                // Should be the monday 4 weeks after
+                start_date: NaiveDate::from_ymd_opt(2024, 9, 23).unwrap()
+            })
+        );
     }
 }
