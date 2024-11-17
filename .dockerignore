@@ -8,6 +8,7 @@ DOCKERFILE
 /backend/target
 
 /frontend/build
+/frontend/dist
 /frontend/node_modules
 
 /frontend-react/build

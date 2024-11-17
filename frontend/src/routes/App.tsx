@@ -4,11 +4,11 @@ import Navbar from '@/components/Navbar';
 
 export default function App() {
   return (
-    <>
-      <div className="w-full flex flex-col justify-center">
-        <Navbar />
+    <div>
+      <Navbar />
+      <main className="w-full h-dvh pt-12">
         <Outlet />
-      </div>
-    </>
+      </main>
+    </div>
   );
 }

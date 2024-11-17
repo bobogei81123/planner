@@ -10,6 +10,7 @@ import './index.css';
 import { setInitialDateOptions } from './lib/date.ts';
 import App from './routes/App.tsx';
 import Login from './routes/Login.tsx';
+import Planning from './routes/Planning.tsx';
 import Tasks from './routes/Tasks.tsx';
 
 setInitialDateOptions();
@@ -50,7 +51,19 @@ const authLink = setContext((_, { headers }) => {
 const client = new ApolloClient({
   uri: '/graphql',
   link: authLink.concat(errorLink.concat(httpLink)),
-  cache: new InMemoryCache(),
+  cache: new InMemoryCache({
+    typePolicies: {
+      Task: {
+        fields: {
+          author: {
+            merge(existing, incoming, { mergeObjects }) {
+              return mergeObjects(existing, incoming) as unknown;
+            },
+          },
+        },
+      },
+    },
+  }),
 });
 
 const router = createBrowserRouter([
@@ -61,6 +74,10 @@ const router = createBrowserRouter([
       {
         path: 'tasks',
         element: <Tasks />,
+      },
+      {
+        path: 'planning',
+        element: <Planning />,
       },
       {
         path: '',

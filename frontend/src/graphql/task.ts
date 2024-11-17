@@ -16,6 +16,12 @@ export const LIST_TASKS = gql(`
         type
         date
       }
+      recurring {
+        startDate
+        pattern {
+          every
+        }
+      }
     }
   }
 `);
@@ -41,6 +47,24 @@ export const UPDATE_TASK = gql(`
       title
       cost
       isCompleted
+      scheduledOn {
+        type
+        date
+      }
+    }
+  }
+`);
+export const UPDATE_TASK_COMPLETE_DATE = gql(`
+  mutation UpdateTaskCompleteDate($id: UUID!, $completeDate: NaiveDate) {
+    updateTask(input: { id: $id, completeDate: $completeDate }) {
+      id
+      title
+      cost
+      isCompleted
+      scheduledOn {
+        type
+        date
+      }
     }
   }
 `);

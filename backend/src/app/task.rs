@@ -213,8 +213,8 @@ pub(crate) struct ViewFilter {
 
 #[derive(Clone, Copy, PartialEq, Eq, async_graphql::Enum)]
 pub(crate) enum ViewType {
-    Planned,
     Scheduled,
+    Planned,
 }
 
 pub(crate) async fn list_tasks(
@@ -249,14 +249,7 @@ pub(crate) async fn list_tasks(
             Ok(tasks.into_iter().filter(filter).collect())
         }
         ViewType::Planned => {
-            let filter = |task: &Task| {
-                let scheduled_epoch = task.scheduled_on;
-                let query_epoch = view_filter.epoch;
-
-                generalized_contains(task.scheduled_on, view_filter.epoch)
-                    && scheduled_epoch.map(|e| e.date_range())
-                        != query_epoch.map(|e| e.date_range())
-            };
+            let filter = |task: &Task| generalized_contains(task.scheduled_on, view_filter.epoch);
             Ok(tasks.into_iter().filter(filter).collect())
         }
     }

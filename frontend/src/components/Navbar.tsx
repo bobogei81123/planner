@@ -16,10 +16,13 @@ export default function Navbar() {
   }
 
   return (
-    <div className="h-12 px-2 border-b flex items-center">
+    <div className="absolute h-12 w-full px-2 border-b flex items-center shrink-0">
       <nav className="px-6 flex items-center space-x-6">
         <NavLink to="/tasks" className={navLinkStyle}>
           Tasks
+        </NavLink>
+        <NavLink to="/planning" className={navLinkStyle}>
+          Planning
         </NavLink>
       </nav>
       <div className="ml-auto">

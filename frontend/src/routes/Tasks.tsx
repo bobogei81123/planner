@@ -1,174 +1,118 @@
-import { useMutation, useQuery } from '@apollo/client';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { useQuery } from '@apollo/client';
+import { useContext } from 'react';
 
-import { CreateTaskDialog } from '@/components/EditTaskDialog';
-import TaskList, { ListType } from '@/components/TaskList';
+import { EditTaskDialogsContext, EditTaskDialogsProvider } from '@/components/EditTaskDialog';
+import EpochSelector from '@/components/EpochSelector';
 import { Button } from '@/components/ui/button.tsx';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator.tsx';
-import { CreateTaskInput, ViewType } from '@/graphql/generated/graphql';
-import { CREATE_TASK, LIST_TASKS } from '@/graphql/task.ts';
-import { Epoch, EpochTypeString, Task } from '@/lib/task';
+import { ViewType } from '@/graphql/generated/graphql';
+import { LIST_TASKS } from '@/graphql/task';
+import { EpochType, Task, useUrlParamEpoch } from '@/lib/task';
+import { stringCompare } from '@/lib/utils';
+import TaskListItem from '@/components/TaskListItem';
 
-function useEpoch() {
-  const [searchParams, setSearchParams] = useSearchParams();
 
-  function tryParseEpoch(epochParam: string | null): Epoch | undefined {
-    if (epochParam == null) return undefined;
-    return Epoch.fromUrlParam(epochParam);
-  }
-
-  let epoch = tryParseEpoch(searchParams.get('epoch'));
-  if (epoch === undefined) {
-    epoch = Epoch.ofDate(new Date());
-    setSearchParams({ epoch: epoch.toUrlParam() });
-  }
-  const setEpoch = (epoch: Epoch) => {
-    setSearchParams({ epoch: epoch.toUrlParam() });
-  };
-  return [epoch, setEpoch] as const;
-}
-
-export default function Tasks() {
-  const [epoch, setEpoch] = useEpoch();
+function TasksInner() {
+  const editTaskDialogs = useContext(EditTaskDialogsContext);
+  const [epoch, setEpoch] = useUrlParamEpoch();
   const {
-    loading: scheduledTasksLoading,
-    error: scheduledTaskError,
-    data: scheduledTask,
+    loading,
+    error,
+    data: gqlTasks,
   } = useQuery(LIST_TASKS, {
     variables: {
       viewType: ViewType.Scheduled,
       epoch: epoch.toGQL(),
     },
   });
-  const {
-    loading: plannedTasksLoading,
-    error: plannedTasksError,
-    data: plannedTasks,
-  } = useQuery(LIST_TASKS, {
-    variables: {
-      viewType: ViewType.Planned,
-      epoch: epoch.toGQL(),
-    },
-  });
-  const [createTaskMutation] = useMutation(CREATE_TASK, {
-    refetchQueries: [LIST_TASKS],
-  });
 
-  function setEpochSelectType(type: EpochTypeString) {
-    const currentDate = epoch.startDate() ?? new Date();
-    switch (type) {
-      case 'DATE':
-        setEpoch(Epoch.ofDate(new Date()));
-        break;
-      case 'WEEK':
-        setEpoch(Epoch.ofWeek(currentDate));
-        break;
-      case 'ALL':
-        setEpoch(Epoch.nullEpoch());
-        break;
+  if (loading) return <p>Loading...</p>;
+  if (error) return <p>Error : {error.message}</p>;
+
+  const tasks = gqlTasks!.tasks.map((t) => Task.fromGQL(t));
+  const exactlyScheduledTasks = tasks.filter(
+    (t) => t.scheduledOn.epochType() === epoch.epochType(),
+  );
+  const otherTasks = tasks.filter((t) => t.scheduledOn.epochType() !== epoch.epochType());
+
+  const exactlyScheduledTitle = (() => {
+    switch (epoch.epochType()) {
+      case EpochType.Date:
+        return 'Scheduled for This Day';
+      case EpochType.Week:
+        return 'Scheduled for This Week';
+      case EpochType.All:
+        return 'Not Scheduled';
     }
-  }
-
-  if (scheduledTasksLoading || plannedTasksLoading) return <p>Loading...</p>;
-  if (scheduledTaskError || plannedTasksError) return <p>Error : {scheduledTaskError?.message}</p>;
-
-  function onCreateTask(data: CreateTaskInput) {
-    void createTaskMutation({
-      variables: data,
-    });
-  }
-
-  function setEpochDate(date?: Date) {
-    if (date == undefined) return;
-    switch (epoch.epochTypeString()) {
-      case 'WEEK':
-        setEpoch(Epoch.ofWeek(date));
-        break;
-      case 'DATE':
-        setEpoch(Epoch.ofDate(date));
-        break;
-      case 'ALL':
-        console.warn('bug: `setEpochDate` called when epoch type is `ALL`');
-        return;
-    }
-  }
-
-  let epochDisplayString;
-  if (epoch.isNullEpoch()) {
-    epochDisplayString = <span>{epoch.toDisplayString()}</span>;
-  } else {
-    epochDisplayString = (
-      <Popover>
-        <PopoverTrigger asChild>
-          <span>{epoch.toDisplayString()}</span>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0">
-          <Calendar
-            mode="single"
-            selected={epoch.startDate()}
-            onSelect={setEpochDate}
-            initialFocus
-          />
-        </PopoverContent>
-      </Popover>
-    );
-  }
+  })();
 
   return (
-    <div className="flex justify-center">
-      <div className="w-full max-w-screen-md h-screen flex-col">
-        <div className="w-full my-4 flex flex-col items-center space-y-2">
-          <Select value={epoch.epochTypeString()} onValueChange={setEpochSelectType}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Day" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="DATE">Day</SelectItem>
-              <SelectItem value="WEEK">Week</SelectItem>
-              <SelectItem value="ALL">All</SelectItem>
-            </SelectContent>
-          </Select>
-          {!epoch.isNullEpoch() && (
-            <div className="flex items-center space-x-2">
-              <Button variant="outline" size="icon" onClick={() => setEpoch(epoch.prevEpoch())}>
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              {epochDisplayString}
-              <Button variant="outline" size="icon" onClick={() => setEpoch(epoch.nextEpoch())}>
-                <ChevronRight className="h-4 w-4" />
-              </Button>
+    <div className="w-full h-full flex justify-center py-2">
+      <div className="w-[95vw] max-w-xl h-full flex flex-col">
+        <EpochSelector epoch={epoch} setEpoch={setEpoch} />
+        <ScrollArea className="w-full">
+          <div className="w-[95vw] max-w-xl flex flex-col items-center">
+            <div className="w-full">
+              <DoubleHr text={exactlyScheduledTitle} />
+              <TaskList tasks={exactlyScheduledTasks} />
+              <DoubleHr text="Other Tasks in Sub-iterations" />
+              <TaskList tasks={otherTasks} />
             </div>
-          )}
-        </div>
-        <TaskList
-          tasks={scheduledTask!.tasks.map((t) => Task.fromGQL(t))}
-          listType={ListType.Scheduled}
-        />
-        {!epoch.isNullEpoch() && (
-          <TaskList
-            tasks={plannedTasks!.tasks.map((t) => Task.fromGQL(t))}
-            listType={ListType.Planned}
-          />
-        )}
+          </div>
+        </ScrollArea>
         <Separator />
         <div className="mt-4 flex justify-center">
-          <CreateTaskDialog
-            onCreate={onCreateTask}
-            trigger={<Button variant="outline">Create Task</Button>}
-            defaultEpoch={epoch}
-          ></CreateTaskDialog>
+          <Button variant="outline" onClick={() => editTaskDialogs.openCreateTaskDialog(epoch)}>
+            Create Task
+          </Button>
         </div>
       </div>
     </div>
+  );
+}
+
+interface TaskListProps {
+  tasks: Task[];
+}
+
+function TaskList({ tasks }: TaskListProps) {
+  const mainSection = (() => {
+    if (tasks.length === 0) {
+      return (
+        <div className="flex justify-center my-2">
+          <span className="text-lg">Nothing...</span>
+        </div>
+      );
+    } else {
+      const taskCards = tasks
+        .sort((a, b) => stringCompare(a.id, b.id))
+        .map((task) => <TaskListItem key={task.id} task={task}></TaskListItem>);
+      return <div className="flex flex-col px-3 py-2">{taskCards}</div>;
+    }
+  })();
+
+  return <>{mainSection}</>;
+}
+
+function DoubleHr({ text }: { text?: string }) {
+  return (
+    <div className="w-full flex justify-center items-center">
+      <div className="h-[4px] grow border-t border-b border-muted-strong"></div>
+      {text && (
+        <>
+          <span className="px-2">{text}</span>
+          <div className="h-[4px] grow border-t border-b border-muted-strong"></div>
+        </>
+      )}
+    </div>
+  );
+}
+
+export default function Tasks() {
+  return (
+    <EditTaskDialogsProvider>
+      <TasksInner />
+    </EditTaskDialogsProvider>
   );
 }

@@ -39,40 +39,56 @@ pub(crate) type AppSchema = async_graphql::Schema<QueryRoot, MutationRoot, Empty
 
 pub(crate) struct QueryRoot;
 
-#[derive(Debug, thiserror::Error)]
-enum Error {
-    #[error("Bad request: {0}")]
-    BadRequest(BadRequestReason),
-    #[error("Internal error: {0}")]
-    Internal(#[from] anyhow::Error),
+#[Object]
+impl QueryRoot {
+    async fn tasks(
+        &self,
+        ctx: &Context<'_>,
+        filter: Option<TaskFilter>,
+    ) -> async_graphql::Result<Vec<Task>> {
+        Ok(app::task::list_tasks(
+            ctx.user()?.id,
+            filter.try_map(TryInto::try_into)?.unwrap_or_default(),
+            ctx.db_conn(),
+        )
+        .await?
+        .into_iter()
+        .map(Task::from)
+        .collect::<Vec<_>>())
+    }
 }
 
-impl Error {
-    fn invalid_date_range(date_range: DateRange) -> Self {
-        Self::BadRequest(BadRequestReason::InvalidDateRange(date_range))
+pub(crate) struct MutationRoot;
+
+#[Object]
+impl MutationRoot {
+    async fn create_task(
+        &self,
+        ctx: &Context<'_>,
+        input: CreateTaskInput,
+    ) -> async_graphql::Result<Task> {
+        Ok(
+            app::task::create_task(ctx.user()?.id, input.into(), ctx.db_conn())
+                .await?
+                .into(),
+        )
     }
 
-    fn required_field_is_null(field: String) -> Self {
-        Error::BadRequest(BadRequestReason::RequiredFieldIsNull { field })
+    async fn update_task(
+        &self,
+        ctx: &Context<'_>,
+        input: UpdateTaskInput,
+    ) -> async_graphql::Result<Task> {
+        Ok(
+            app::task::update_task(ctx.user()?.id, input.try_into()?, ctx.db_conn())
+                .await?
+                .into(),
+        )
     }
-}
 
-#[derive(Debug)]
-enum BadRequestReason {
-    InvalidDateRange(DateRange),
-    RequiredFieldIsNull { field: String },
-}
-
-impl Display for BadRequestReason {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidDateRange(date_range) => {
-                write!(f, "the date range {date_range:?} is not valid")
-            }
-            Self::RequiredFieldIsNull { field } => {
-                write!(f, "field `{field}` is a required field, but set to null")
-            }
-        }
+    async fn delete_task(&self, ctx: &Context<'_>, id: Uuid) -> async_graphql::Result<Uuid> {
+        app::task::delete_task(ctx.user()?.id, id, ctx.db_conn()).await?;
+        Ok(id)
     }
 }
 
@@ -230,25 +246,6 @@ impl From<app::task::Task> for Task {
     }
 }
 
-#[Object]
-impl QueryRoot {
-    async fn tasks(
-        &self,
-        ctx: &Context<'_>,
-        filter: Option<TaskFilter>,
-    ) -> async_graphql::Result<Vec<Task>> {
-        Ok(app::task::list_tasks(
-            ctx.user()?.id,
-            filter.try_map(TryInto::try_into)?.unwrap_or_default(),
-            ctx.db_conn(),
-        )
-        .await?
-        .into_iter()
-        .map(Task::from)
-        .collect::<Vec<_>>())
-    }
-}
-
 #[derive(InputObject)]
 struct CreateTaskInput {
     scheduled_on: Option<Epoch>,
@@ -308,36 +305,40 @@ fn into_maybe_nonnull<T>(value: MaybeUndefined<T>) -> Option<Maybe<T>> {
     }
 }
 
-pub(crate) struct MutationRoot;
-#[Object]
-impl MutationRoot {
-    async fn create_task(
-        &self,
-        ctx: &Context<'_>,
-        input: CreateTaskInput,
-    ) -> async_graphql::Result<Task> {
-        Ok(
-            app::task::create_task(ctx.user()?.id, input.into(), ctx.db_conn())
-                .await?
-                .into(),
-        )
+#[derive(Debug, thiserror::Error)]
+enum Error {
+    #[error("Bad request: {0}")]
+    BadRequest(BadRequestReason),
+    #[error("Internal error: {0}")]
+    Internal(#[from] anyhow::Error),
+}
+
+impl Error {
+    fn invalid_date_range(date_range: DateRange) -> Self {
+        Self::BadRequest(BadRequestReason::InvalidDateRange(date_range))
     }
 
-    async fn update_task(
-        &self,
-        ctx: &Context<'_>,
-        input: UpdateTaskInput,
-    ) -> async_graphql::Result<Task> {
-        Ok(
-            app::task::update_task(ctx.user()?.id, input.try_into()?, ctx.db_conn())
-                .await?
-                .into(),
-        )
+    fn required_field_is_null(field: String) -> Self {
+        Error::BadRequest(BadRequestReason::RequiredFieldIsNull { field })
     }
+}
 
-    async fn delete_task(&self, ctx: &Context<'_>, id: Uuid) -> async_graphql::Result<Uuid> {
-        app::task::delete_task(ctx.user()?.id, id, ctx.db_conn()).await?;
-        Ok(id)
+#[derive(Debug)]
+enum BadRequestReason {
+    InvalidDateRange(DateRange),
+    RequiredFieldIsNull { field: String },
+}
+
+impl Display for BadRequestReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidDateRange(date_range) => {
+                write!(f, "the date range {date_range:?} is not valid")
+            }
+            Self::RequiredFieldIsNull { field } => {
+                write!(f, "field `{field}` is a required field, but set to null")
+            }
+        }
     }
 }
 

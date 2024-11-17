@@ -1,9 +1,10 @@
 import * as dateFns from 'date-fns';
+import { useSearchParams } from 'react-router-dom';
 
 import { fromGQLDate, toGQLDate } from '@/graphql/date';
 import {
-  EpochType,
   Epoch as GQLEpoch,
+  EpochType as GQLEpochType,
   Task as GQLTask,
   InputEpoch,
 } from '@/graphql/generated/graphql';
@@ -11,12 +12,17 @@ import {
 import { formatISODate } from './date';
 
 interface DatedEpoch {
-  type: EpochType;
+  type: GQLEpochType;
   date: Date;
 }
 
 type EpochInner = DatedEpoch | null;
-export type EpochTypeString = 'DATE' | 'WEEK' | 'ALL';
+
+export enum EpochType {
+  Date = 'DATE',
+  Week = 'WEEK',
+  All = 'ALL',
+}
 
 export class Epoch {
   readonly inner: EpochInner;
@@ -29,7 +35,7 @@ export class Epoch {
     return this.inner?.date ?? null;
   }
 
-  get type(): EpochType | null {
+  get type(): GQLEpochType | null {
     return this.inner?.type ?? null;
   }
 
@@ -47,14 +53,14 @@ export class Epoch {
 
   static ofDate(date: Date): Epoch {
     return new Epoch({
-      type: EpochType.Date,
+      type: GQLEpochType.Date,
       date,
     });
   }
 
   static ofWeek(date: Date): Epoch {
     return new Epoch({
-      type: EpochType.Week,
+      type: GQLEpochType.Week,
       date: dateFns.startOfWeek(date),
     });
   }
@@ -71,9 +77,9 @@ export class Epoch {
     switch (this.inner?.type) {
       case undefined:
         return undefined;
-      case EpochType.Date:
+      case GQLEpochType.Date:
         return this.inner.date;
-      case EpochType.Week:
+      case GQLEpochType.Week:
         return dateFns.startOfWeek(this.inner.date);
     }
   }
@@ -82,9 +88,9 @@ export class Epoch {
     switch (this.inner?.type) {
       case undefined:
         return Epoch.nullEpoch();
-      case EpochType.Date:
+      case GQLEpochType.Date:
         return Epoch.ofDate(dateFns.addDays(this.inner.date, 1));
-      case EpochType.Week:
+      case GQLEpochType.Week:
         return Epoch.ofWeek(dateFns.addWeeks(this.inner.date, 1));
     }
   }
@@ -93,9 +99,9 @@ export class Epoch {
     switch (this.inner?.type) {
       case undefined:
         return Epoch.nullEpoch();
-      case EpochType.Date:
+      case GQLEpochType.Date:
         return Epoch.ofDate(dateFns.subDays(this.inner.date, 1));
-      case EpochType.Week:
+      case GQLEpochType.Week:
         return Epoch.ofWeek(dateFns.subWeeks(this.inner.date, 1));
     }
   }
@@ -108,14 +114,14 @@ export class Epoch {
     };
   }
 
-  epochTypeString(): EpochTypeString {
+  epochType(): EpochType {
     switch (this.inner?.type) {
       case undefined:
-        return 'ALL';
-      case EpochType.Date:
-        return 'DATE';
-      case EpochType.Week:
-        return 'WEEK';
+        return EpochType.All;
+      case GQLEpochType.Date:
+        return EpochType.Date;
+      case GQLEpochType.Week:
+        return EpochType.Week;
     }
   }
 
@@ -127,9 +133,9 @@ export class Epoch {
     switch (this.inner?.type) {
       case undefined:
         return 'All Time';
-      case EpochType.Date:
+      case GQLEpochType.Date:
         return dateFns.format(this.inner.date, 'PPP');
-      case EpochType.Week: {
+      case GQLEpochType.Week: {
         const EM_DASH = '\u2013';
         const start = dateFns.startOfWeek(this.inner.date);
         const end = dateFns.endOfWeek(this.inner.date);
@@ -142,9 +148,9 @@ export class Epoch {
     switch (this.inner?.type) {
       case undefined:
         return 'ALL';
-      case EpochType.Date:
+      case GQLEpochType.Date:
         return 'DATE.' + formatISODate(this.startDate()!);
-      case EpochType.Week:
+      case GQLEpochType.Week:
         return 'WEEK.' + formatISODate(this.startDate()!);
     }
   }
@@ -168,6 +174,7 @@ export class Task {
     readonly isCompleted: boolean,
     readonly cost?: number,
     readonly scheduledOn: Epoch = Epoch.nullEpoch(),
+    readonly recurring: unknown = undefined,
   ) {}
 
   static fromGQL(task: GQLTask): Task {
@@ -177,20 +184,30 @@ export class Task {
       task.isCompleted,
       task.cost ?? undefined,
       Epoch.fromGQL(task.scheduledOn ?? null),
+      task.recurring == undefined ? undefined : task.recurring,
     );
   }
 
-  // static fromObj({
-  //   title,
-  //   isCompleted,
-  //   cost,
-  //   scheduleOn,
-  // }: {
-  //   title: string;
-  //   isCompleted: boolean;
-  //   cost?: number | null;
-  //   scheduleOn?: Epoch;
-  // }) {
-  //   return new Task(title, isCompleted, cost, scheduleOn);
-  // }
+  isRecurring(): boolean {
+    return this.recurring != undefined;
+  }
+}
+
+export function useUrlParamEpoch(): [Epoch, (epoch: Epoch) => void] {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  function tryParseEpoch(epochParam: string | null): Epoch | undefined {
+    if (epochParam == null) return undefined;
+    return Epoch.fromUrlParam(epochParam);
+  }
+
+  let epoch = tryParseEpoch(searchParams.get('epoch'));
+  if (epoch === undefined) {
+    epoch = Epoch.ofDate(new Date());
+    setSearchParams({ ...searchParams, epoch: epoch.toUrlParam() });
+  }
+  const setEpoch = (epoch: Epoch) => {
+    setSearchParams({ epoch: epoch.toUrlParam() });
+  };
+  return [epoch, setEpoch] as const;
 }

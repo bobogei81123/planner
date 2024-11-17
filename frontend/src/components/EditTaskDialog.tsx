@@ -1,10 +1,12 @@
+import { useMutation } from '@apollo/client';
 import * as dateFns from 'date-fns';
 import { AlertCircle, CalendarIcon, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import React, { Dispatch, SetStateAction, createContext, useState } from 'react';
 
 import { toGQLDate } from '@/graphql/date';
 import { CreateTaskInput, InputRecurringSpec, UpdateTaskInput } from '@/graphql/generated/graphql';
-import { Epoch, EpochTypeString, Task } from '@/lib/task';
+import { CREATE_TASK, DELETE_TASK, UPDATE_TASK } from '@/graphql/task';
+import { Epoch, EpochType, Task } from '@/lib/task';
 import { cn } from '@/lib/utils';
 
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
@@ -15,19 +17,12 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import {
-  Sheet,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from './ui/sheet';
+import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from './ui/sheet';
 
 interface EditTaskData {
   title?: string;
   cost?: number;
-  epochTypeString: EpochTypeString;
+  epochType: EpochType;
   epochDate?: Date;
   recurring?: RecurringSpec;
 }
@@ -41,7 +36,7 @@ interface EditTaskFormProps {
 }
 
 function EditTaskForm({
-  value: { title, cost, epochTypeString, epochDate, recurring },
+  value: { title, cost, epochType, epochDate, recurring },
   setValue,
   errorMessage,
 }: EditTaskFormProps) {
@@ -53,8 +48,8 @@ function EditTaskForm({
   }
   const setTitle = wrapFn((title?: string) => ({ title }));
   const setCost = wrapFn((cost?: number) => ({ cost }));
-  const setEpochTypeString = wrapFn((epochTypeString: EpochTypeString) => ({
-    epochTypeString,
+  const setEpochType = wrapFn((epochType: EpochType) => ({
+    epochType,
   }));
   const setEpochDate = wrapFn((epochDate?: Date) => ({
     epochDate,
@@ -79,7 +74,7 @@ function EditTaskForm({
         <Input
           id="title-input"
           className="col-span-3"
-          value={title}
+          value={title ?? ''}
           onChange={(e) => setTitle(e.target.value)}
         />
       </div>
@@ -99,10 +94,7 @@ function EditTaskForm({
       </div>
       <div className="grid grid-cols-4 items-center gap-4">
         <Label className="text-right">Scheduled on</Label>
-        <Select
-          value={epochTypeString}
-          onValueChange={(ep) => setEpochTypeString(ep as EpochTypeString)}
-        >
+        <Select value={epochType} onValueChange={(ep) => setEpochType(ep as EpochType)}>
           <SelectTrigger className="col-span-3">
             <SelectValue placeholder="Day" />
           </SelectTrigger>
@@ -113,7 +105,7 @@ function EditTaskForm({
           </SelectContent>
         </Select>
       </div>
-      {epochTypeString !== 'ALL' && (
+      {epochType !== EpochType.All && (
         <div className="grid grid-cols-4 items-center gap-4">
           <Label className="text-right">Scheduled Date</Label>
           <Popover>
@@ -183,15 +175,15 @@ function EditTaskForm({
 
 type CreateTaskData = Omit<CreateTaskInput, 'id'>;
 interface CreateTaskDialogProps {
+  open: boolean;
+  setOpen: Dispatch<SetStateAction<boolean>>;
   onCreate: (data: CreateTaskData) => void;
-  trigger: React.ReactNode;
   defaultEpoch: Epoch;
 }
 
-export function CreateTaskDialog({ onCreate, trigger, defaultEpoch }: CreateTaskDialogProps) {
-  const [open, setOpen] = useState(false);
+export function CreateTaskDialog({ open, setOpen, onCreate, defaultEpoch }: CreateTaskDialogProps) {
   const [data, setData] = useState<EditTaskData>({
-    epochTypeString: defaultEpoch.epochTypeString(),
+    epochType: defaultEpoch.epochType(),
     epochDate: defaultEpoch.startDate(),
   });
   const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
@@ -199,7 +191,7 @@ export function CreateTaskDialog({ onCreate, trigger, defaultEpoch }: CreateTask
   function getCreateTaskData({
     title,
     cost,
-    epochTypeString,
+    epochType,
     epochDate,
     recurring,
   }: EditTaskData): CreateTaskData | Error {
@@ -207,18 +199,18 @@ export function CreateTaskDialog({ onCreate, trigger, defaultEpoch }: CreateTask
       return new Error('Title is required');
     }
     let epoch;
-    switch (epochTypeString) {
-      case 'ALL':
+    switch (epochType) {
+      case EpochType.All:
         epoch = Epoch.nullEpoch();
         break;
-      case 'DATE': {
+      case EpochType.Date: {
         if (epochDate == null) {
           return new Error('When schedule type is not "ALL", a date is required');
         }
         epoch = Epoch.ofDate(epochDate);
         break;
       }
-      case 'WEEK': {
+      case EpochType.Week: {
         if (epochDate == null) {
           return new Error('When schedule type is not "ALL", a date is required');
         }
@@ -263,7 +255,7 @@ export function CreateTaskDialog({ onCreate, trigger, defaultEpoch }: CreateTask
 
   function clearState() {
     setData({
-      epochTypeString: defaultEpoch.epochTypeString(),
+      epochType: defaultEpoch.epochType(),
       epochDate: defaultEpoch.startDate(),
     });
     setErrorMessage(undefined);
@@ -271,7 +263,6 @@ export function CreateTaskDialog({ onCreate, trigger, defaultEpoch }: CreateTask
 
   return (
     <Sheet modal={false} open={open} onOpenChange={onOpenChange}>
-      <SheetTrigger asChild>{trigger}</SheetTrigger>
       <SheetContent className="sm:max-w-[425px]">
         <SheetHeader>
           <SheetTitle>Create task</SheetTitle>
@@ -288,44 +279,51 @@ export function CreateTaskDialog({ onCreate, trigger, defaultEpoch }: CreateTask
 }
 
 interface UpdateTaskDialogProps {
-  task: Task;
-  onClose: () => void;
-  onUpdate: (data: Omit<UpdateTaskInput, 'id'>) => void;
-  onDelete: () => void;
+  open: boolean;
+  setOpen: Dispatch<SetStateAction<boolean>>;
+  task: Task | undefined;
+  onUpdate: (data: UpdateTaskInput) => void;
+  onDelete: (id: string) => void;
 }
 
-export function UpdateTaskDialog({ task, onClose, onUpdate, onDelete }: UpdateTaskDialogProps) {
+export function UpdateTaskDialog({
+  open,
+  setOpen,
+  task,
+  onUpdate,
+  onDelete,
+}: UpdateTaskDialogProps) {
+  const taskId = task?.id ?? '';
   const [data, setData] = useState<EditTaskData>({
-    title: task.title,
-    cost: task.cost ?? undefined,
-    epochTypeString: task.scheduledOn.epochTypeString(),
-    epochDate: task.scheduledOn.startDate(),
+    title: task?.title,
+    cost: task?.cost,
+    epochType: task?.scheduledOn.epochType() ?? EpochType.All,
+    epochDate: task?.scheduledOn.startDate(),
   });
   const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
 
-  type UpdateTaskData = Omit<UpdateTaskInput, 'id'>;
   function getUpdateTaskData({
     title,
     cost,
-    epochTypeString,
+    epochType,
     epochDate,
-  }: EditTaskData): UpdateTaskData | Error {
+  }: EditTaskData): UpdateTaskInput | Error {
     if (title == undefined || title === '') {
       return new Error('Title is required');
     }
     let epoch;
-    switch (epochTypeString) {
-      case 'ALL':
+    switch (epochType) {
+      case EpochType.All:
         epoch = Epoch.nullEpoch();
         break;
-      case 'DATE': {
+      case EpochType.Date: {
         if (epochDate == null) {
           return new Error('When schedule type is not "ALL", a date is required');
         }
         epoch = Epoch.ofDate(epochDate);
         break;
       }
-      case 'WEEK': {
+      case EpochType.Week: {
         if (epochDate == null) {
           return new Error('When schedule type is not "ALL", a date is required');
         }
@@ -335,6 +333,7 @@ export function UpdateTaskDialog({ task, onClose, onUpdate, onDelete }: UpdateTa
     }
 
     return {
+      id: taskId,
       title,
       cost,
       scheduledOn: epoch.toGQL(),
@@ -348,24 +347,16 @@ export function UpdateTaskDialog({ task, onClose, onUpdate, onDelete }: UpdateTa
       return false;
     }
     onUpdate(finalData);
-    onClose();
+    setOpen(false);
   }
 
   function onDeleteHandler() {
-    onDelete();
-    onClose();
-  }
-
-  function onOpenChange(value: boolean) {
-    if (value) {
-      console.warn('UpdateTaskDialog should never be opened by itself');
-      return;
-    }
-    onClose();
+    onDelete(taskId);
+    setOpen(false);
   }
 
   return (
-    <Sheet modal={false} open={true} onOpenChange={onOpenChange}>
+    <Sheet modal={false} open={open} onOpenChange={setOpen}>
       <SheetContent className="sm:max-w-[425px]">
         <SheetHeader>
           <SheetTitle>Update task</SheetTitle>
@@ -380,5 +371,97 @@ export function UpdateTaskDialog({ task, onClose, onUpdate, onDelete }: UpdateTa
         </SheetFooter>
       </SheetContent>
     </Sheet>
+  );
+}
+
+interface EditTaskDialogsState {
+  openCreateTaskDialog: (defaultEpoch: Epoch) => void;
+  openUpdateTaskDialog: (task: Task) => void;
+}
+
+export const EditTaskDialogsContext = createContext<EditTaskDialogsState>({
+  openCreateTaskDialog: () => undefined,
+  openUpdateTaskDialog: () => undefined,
+});
+
+export function EditTaskDialogsProvider({ children }: { children: React.ReactNode }) {
+  const [renderKey, setRenderKey] = useState(0);
+  const [createDialogOpen, setCreateDialogOpen] = useState<boolean>(false);
+  const [createDialogState, setCreateDialogState] = useState({
+    defaultEpoch: Epoch.nullEpoch(),
+  });
+  const [updateDialogOpen, setUpdateDialogOpen] = useState<boolean>(false);
+  const [updateDialogState, setUpdateDialogState] = useState({
+    task: undefined as Task | undefined,
+  });
+  const [createTaskMutation] = useMutation(CREATE_TASK);
+  const [updateTaskMutation] = useMutation(UPDATE_TASK);
+  const [deleteTaskMutation] = useMutation(DELETE_TASK);
+
+  function onCreate(data: CreateTaskInput) {
+    void createTaskMutation({
+      variables: data,
+      update(cache) {
+        cache.evict({ fieldName: 'tasks' });
+      },
+    });
+  }
+
+  function onUpdate(data: UpdateTaskInput) {
+    void updateTaskMutation({
+      variables: {
+        input: data,
+      },
+      update(cache) {
+        cache.evict({ fieldName: 'tasks' });
+      },
+    });
+  }
+
+  function onDelete(id: string) {
+    void deleteTaskMutation({
+      variables: {
+        id,
+      },
+      update(cache) {
+        cache.evict({ fieldName: 'tasks' });
+      },
+    });
+  }
+
+  const state: EditTaskDialogsState = {
+    openCreateTaskDialog: (defaultEpoch: Epoch) => {
+      setRenderKey(renderKey + 1);
+      setCreateDialogState({ defaultEpoch });
+      setCreateDialogOpen(true);
+      setUpdateDialogOpen(false);
+    },
+    openUpdateTaskDialog: (task: Task) => {
+      setRenderKey(renderKey + 1);
+      setUpdateDialogState({ task });
+      setUpdateDialogOpen(true);
+      setCreateDialogOpen(false);
+    },
+  };
+
+  return (
+    <EditTaskDialogsContext.Provider value={state}>
+      <CreateTaskDialog
+        key={renderKey * 2}
+        open={createDialogOpen}
+        setOpen={setCreateDialogOpen}
+        onCreate={onCreate}
+        {...createDialogState}
+      />
+      <UpdateTaskDialog
+        key={renderKey * 2 + 1}
+        open={updateDialogOpen}
+        setOpen={setUpdateDialogOpen}
+        onUpdate={onUpdate}
+        onDelete={onDelete}
+        {...updateDialogState}
+      />
+      {children}
+    </EditTaskDialogsContext.Provider>
   );
 }
