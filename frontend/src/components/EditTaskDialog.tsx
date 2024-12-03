@@ -20,8 +20,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from './ui/sheet';
 
 interface EditTaskData {
-  title?: string;
-  cost?: number;
+  title: string;
+  cost: string;
   epochType: EpochType;
   epochDate?: Date;
   recurring?: RecurringSpec;
@@ -47,7 +47,7 @@ function EditTaskForm({
     };
   }
   const setTitle = wrapFn((title?: string) => ({ title }));
-  const setCost = wrapFn((cost?: number) => ({ cost }));
+  const setCost = wrapFn((cost?: string) => ({ cost }));
   const setEpochType = wrapFn((epochType: EpochType) => ({
     epochType,
   }));
@@ -87,9 +87,7 @@ function EditTaskForm({
           type="number"
           className="col-span-3"
           value={cost}
-          onChange={(e) =>
-            setCost(e.target.value != undefined ? Number(e.target.value) : undefined)
-          }
+          onChange={(e) => setCost(e.target.value)}
         />
       </div>
       <div className="grid grid-cols-4 items-center gap-4">
@@ -183,6 +181,8 @@ interface CreateTaskDialogProps {
 
 export function CreateTaskDialog({ open, setOpen, onCreate, defaultEpoch }: CreateTaskDialogProps) {
   const [data, setData] = useState<EditTaskData>({
+    title: '',
+    cost: '',
     epochType: defaultEpoch.epochType(),
     epochDate: defaultEpoch.startDate(),
   });
@@ -195,7 +195,7 @@ export function CreateTaskDialog({ open, setOpen, onCreate, defaultEpoch }: Crea
     epochDate,
     recurring,
   }: EditTaskData): CreateTaskData | Error {
-    if (title == undefined || title === '') {
+    if (title === '') {
       return new Error('Title is required');
     }
     let epoch;
@@ -227,10 +227,14 @@ export function CreateTaskDialog({ open, setOpen, onCreate, defaultEpoch }: Crea
         startDate: toGQLDate(dateFns.startOfWeek(new Date())),
       };
     }
+    const parsedCost = parseCost(cost);
+    if (parsedCost instanceof Error) {
+      return parsedCost;
+    }
 
     return {
       title,
-      cost,
+      cost: parsedCost,
       scheduledOn: epoch.toGQL(),
       recurringSpec,
     };
@@ -255,6 +259,8 @@ export function CreateTaskDialog({ open, setOpen, onCreate, defaultEpoch }: Crea
 
   function clearState() {
     setData({
+      title: '',
+      cost: '',
       epochType: defaultEpoch.epochType(),
       epochDate: defaultEpoch.startDate(),
     });
@@ -295,8 +301,8 @@ export function UpdateTaskDialog({
 }: UpdateTaskDialogProps) {
   const taskId = task?.id ?? '';
   const [data, setData] = useState<EditTaskData>({
-    title: task?.title,
-    cost: task?.cost,
+    title: task?.title ?? '',
+    cost: task?.cost?.toString() ?? '',
     epochType: task?.scheduledOn.epochType() ?? EpochType.All,
     epochDate: task?.scheduledOn.startDate(),
   });
@@ -331,11 +337,15 @@ export function UpdateTaskDialog({
         break;
       }
     }
+    const parsedCost = parseCost(cost);
+    if (parsedCost instanceof Error) {
+      return parsedCost;
+    }
 
     return {
       id: taskId,
       title,
-      cost,
+      cost: parsedCost,
       scheduledOn: epoch.toGQL(),
     };
   }
@@ -464,4 +474,15 @@ export function EditTaskDialogsProvider({ children }: { children: React.ReactNod
       {children}
     </EditTaskDialogsContext.Provider>
   );
+}
+
+function parseCost(cost: string): number | null | Error {
+  if (cost === '') {
+    return null;
+  }
+  const parsedCost = Number(cost);
+  if (Number.isNaN(parsedCost)) {
+    return new Error('Cost must be a number');
+  }
+  return parsedCost;
 }
